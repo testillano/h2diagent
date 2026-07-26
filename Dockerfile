@@ -1,0 +1,221 @@
+# =============================================================================
+# h2diagent multi-stage Dockerfile
+# =============================================================================
+# C++ HTTP/2 - DIAMETER Gateway Service (translation agent)
+# All dependency versions are declared as ARGs here (single source of truth).
+#
+# Stages:
+#   deps      - All third-party libraries compiled and installed
+#   build     - Project compilation
+#   unit-test - Lightweight image for running unit tests
+#   runtime   - Production image with only the binary
+#
+# Usage:
+#   docker build --target deps      -t h2diagent_builder .
+#   docker build --target build     -t h2diagent_build .
+#   docker build --target unit-test -t h2diagent_ut .
+#   docker build --target runtime   -t h2diagent .
+# =============================================================================
+
+FROM ubuntu:24.04 AS deps
+LABEL maintainer="testillano"
+LABEL description="Docker image with all dependencies to build h2diagent"
+
+WORKDIR /code/build
+
+# ---------------------------------------------------------------------------
+# Dependency versions (single source of truth)
+# ---------------------------------------------------------------------------
+ARG make_procs=4
+ARG build_type=Release
+
+ARG boost_ver=1.84.0
+ARG ert_logger_ver=v1.1.1
+ARG nlohmann_json_ver=v3.12.0
+ARG pboettch_jsonschemavalidator_ver=2.4.0
+ARG jupp0r_prometheuscpp_ver=v1.3.0
+ARG civetweb_civetweb_ver=v1.16
+ARG ert_metrics_ver=v1.3.0
+ARG testillano_nghttp2_ver=master
+ARG ert_http2comm_ver=v2.4.1
+ARG ert_diametercodec_ver=v1.0.0
+ARG ert_diametercomm_ver=master
+ARG google_test_ver=v1.11.0
+
+# ---------------------------------------------------------------------------
+# System packages
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    wget tar bzip2 \
+    make cmake g++ \
+    libssl-dev zlib1g-dev libcurl4-openssl-dev \
+    libsctp-dev \
+    doxygen graphviz \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ===========================================================================
+# BOOST
+# ===========================================================================
+RUN set -x && \
+    boost_tar=boost_$(echo ${boost_ver} | tr '.' '_').tar.gz && \
+    wget -O ${boost_tar} https://boostorg.jfrog.io/artifactory/main/release/${boost_ver}/source/${boost_tar} && \
+    file ${boost_tar} | grep -q gzip || \
+    (rm -f ${boost_tar} && wget -O ${boost_tar} https://sourceforge.net/projects/boost/files/boost/${boost_ver}/${boost_tar}) && \
+    tar xvf ${boost_tar} && cd boost*/ && \
+    ./bootstrap.sh && ./b2 -j${make_procs} variant=release \
+      --with-system --with-thread --with-coroutine --with-context \
+      install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# ERT_LOGGER
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/logger/archive/${ert_logger_ver}.tar.gz && \
+    tar xvf ${ert_logger_ver}.tar.gz && cd logger-*/ && \
+    cmake -DERT_LOGGER_BuildExamples=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
+    make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# NLOHMANN JSON
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/nlohmann/json/archive/refs/tags/${nlohmann_json_ver}.tar.gz && \
+    tar xvf ${nlohmann_json_ver}.tar.gz && cd json-*/ && mkdir build && cd build && \
+    cmake -DJSON_BuildTests=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && \
+    make -j${make_procs} install && \
+    cd ../.. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# PBOETTCH JSON-SCHEMA-VALIDATOR
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/pboettch/json-schema-validator/archive/${pboettch_jsonschemavalidator_ver}.tar.gz && \
+    tar xvf ${pboettch_jsonschemavalidator_ver}.tar.gz && cd json-schema-validator*/ && mkdir build && cd build && \
+    cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 .. && \
+    make -j${make_procs} && make install && \
+    cd ../.. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# PROMETHEUS-CPP + CIVETWEB
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/jupp0r/prometheus-cpp/archive/refs/tags/${jupp0r_prometheuscpp_ver}.tar.gz && \
+    tar xvf ${jupp0r_prometheuscpp_ver}.tar.gz && cd prometheus-cpp*/3rdparty && \
+    wget https://github.com/civetweb/civetweb/archive/refs/tags/${civetweb_civetweb_ver}.tar.gz && \
+    tar xvf ${civetweb_civetweb_ver}.tar.gz && mv civetweb-*/* civetweb && cd .. && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=${build_type} -DENABLE_TESTING=OFF .. && \
+    make -j${make_procs} && make install && \
+    cd ../.. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# ERT_METRICS
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/metrics/archive/${ert_metrics_ver}.tar.gz && \
+    tar xvf ${ert_metrics_ver}.tar.gz && cd metrics-*/ && \
+    cmake -DERT_METRICS_BuildExamples=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
+    make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# NGHTTP2 (with asio support, from testillano/nghttp2 repo)
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/nghttp2/archive/${testillano_nghttp2_ver}.tar.gz && \
+    tar xvf ${testillano_nghttp2_ver}.tar.gz && cd nghttp2-*/ && \
+    cd deps && chmod a+x build.sh && ./build.sh && \
+    cd ../.. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# ERT_HTTP2COMM
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/http2comm/archive/${ert_http2comm_ver}.tar.gz && \
+    tar xvf ${ert_http2comm_ver}.tar.gz && cd http2comm-*/ && \
+    cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# ERT_DIAMETERCODEC
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/diametercodec/archive/${ert_diametercodec_ver}.tar.gz && \
+    tar xvf ${ert_diametercodec_ver}.tar.gz && cd diametercodec-*/ && \
+    cmake -DERT_DIAMETERCODEC_BuildExamples=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
+    make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# ERT_DIAMETERCOMM
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/diametercomm/archive/${ert_diametercomm_ver}.tar.gz && \
+    tar xvf ${ert_diametercomm_ver}.tar.gz && cd diametercomm-*/ && \
+    cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# GOOGLE TEST FRAMEWORK
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/google/googletest/archive/refs/tags/release-$(echo ${google_test_ver} | cut -c2-).tar.gz && \
+    tar xvf release-$(echo ${google_test_ver} | cut -c2-).tar.gz && cd googletest-release*/ && \
+    cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make -j${make_procs} install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# =============================================================================
+# Stage: build
+# =============================================================================
+FROM deps AS build
+
+ARG make_procs=4
+ARG build_type=Release
+
+COPY . /code
+WORKDIR /code
+
+RUN cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs}
+
+# =============================================================================
+# Stage: unit-test
+# =============================================================================
+FROM ubuntu:24.04 AS unit-test
+
+ARG build_type=Release
+
+COPY --from=build /code/build/${build_type}/bin/unit-test /opt/unit-test
+
+ENTRYPOINT ["/opt/unit-test"]
+CMD []
+
+# =============================================================================
+# Stage: runtime
+# =============================================================================
+FROM ubuntu:24.04 AS runtime
+
+ARG build_type=Release
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 libsctp1 curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /code/build/${build_type}/bin/h2diagent /opt/h2diagent
+
+EXPOSE 3868 8074 8080 9090
+
+ENTRYPOINT ["/opt/h2diagent"]
+CMD []
