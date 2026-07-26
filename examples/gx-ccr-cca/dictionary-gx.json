@@ -1,0 +1,38 @@
+{
+  "name": "Gx",
+  "application-id": 16777238,
+  "vendor": [
+    {"name": "3GPP", "code": 10415}
+  ],
+  "avp": [
+    {"name": "Session-Id", "code": 263, "m-bit": true, "single": {"format": "UTF8String"}},
+    {"name": "Origin-Host", "code": 264, "m-bit": true, "single": {"format": "DiameterIdentity"}},
+    {"name": "Origin-Realm", "code": 296, "m-bit": true, "single": {"format": "DiameterIdentity"}},
+    {"name": "Destination-Realm", "code": 283, "m-bit": true, "single": {"format": "DiameterIdentity"}},
+    {"name": "Destination-Host", "code": 293, "m-bit": true, "single": {"format": "DiameterIdentity"}},
+    {"name": "Auth-Application-Id", "code": 258, "m-bit": true, "single": {"format": "Unsigned32"}},
+    {"name": "Result-Code", "code": 268, "m-bit": true, "single": {"format": "Unsigned32"}},
+    {"name": "CC-Request-Type", "code": 416, "m-bit": true, "single": {"format": "Enumerated"}},
+    {"name": "CC-Request-Number", "code": 415, "m-bit": true, "single": {"format": "Unsigned32"}},
+    {"name": "Subscription-Id", "code": 443, "m-bit": true, "single": {"format": "Grouped"},
+     "grouped": [
+       {"name": "Subscription-Id-Type", "code": 450, "m-bit": true, "single": {"format": "Enumerated"}},
+       {"name": "Subscription-Id-Data", "code": 444, "m-bit": true, "single": {"format": "UTF8String"}}
+     ]
+    },
+    {"name": "Charging-Rule-Install", "code": 1001, "v-bit": true, "m-bit": true, "single": {"format": "Grouped"},
+     "grouped": [
+       {"name": "Charging-Rule-Name", "code": 1005, "v-bit": true, "m-bit": true, "single": {"format": "OctetString"}}
+     ]
+    },
+    {"name": "Charging-Rule-Remove", "code": 1002, "v-bit": true, "m-bit": true, "single": {"format": "Grouped"},
+     "grouped": [
+       {"name": "Charging-Rule-Name", "code": 1005, "v-bit": true, "m-bit": true, "single": {"format": "OctetString"}}
+     ]
+    },
+    {"name": "Event-Trigger", "code": 1006, "v-bit": true, "m-bit": true, "single": {"format": "Enumerated"}}
+  ],
+  "command": [
+    {"name": "Credit-Control", "code": 272}
+  ]
+}

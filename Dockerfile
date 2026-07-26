@@ -48,7 +48,7 @@ ARG google_test_ver=v1.11.0
 # System packages
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
-    wget tar bzip2 unzip \
+    wget zip unzip tar bzip2 patch \
     make cmake g++ autoconf automake libtool pkg-config \
     libssl-dev zlib1g-dev libcurl4-openssl-dev \
     libsctp-dev \

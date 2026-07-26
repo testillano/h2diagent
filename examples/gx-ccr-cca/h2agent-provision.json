@@ -1,0 +1,100 @@
+[
+  {
+    "requestMethod": "POST",
+    "requestUri": "/diameter/gx/CCR",
+    "responseCode": 200,
+    "responseHeaders": {"content-type": "application/json"},
+    "responseBody": {
+      "Session-Id": "",
+      "Result-Code": 2001,
+      "Origin-Host": "mock-pcrf.example.com",
+      "Origin-Realm": "example.com",
+      "Auth-Application-Id": 16777238,
+      "CC-Request-Type": 0,
+      "CC-Request-Number": 0,
+      "Charging-Rule-Install": {
+        "Charging-Rule-Name": "rule-default"
+      }
+    },
+    "transform": [
+      {
+        "source": "request.body./Session-Id",
+        "target": "response.body.json.string./Session-Id"
+      },
+      {
+        "source": "request.body./CC-Request-Type",
+        "target": "response.body.json.integer./CC-Request-Type"
+      },
+      {
+        "source": "request.body./CC-Request-Number",
+        "target": "response.body.json.unsigned./CC-Request-Number"
+      }
+    ],
+    "outState": "update"
+  },
+  {
+    "requestMethod": "POST",
+    "requestUri": "/diameter/gx/CCR",
+    "inState": "update",
+    "responseCode": 200,
+    "responseHeaders": {"content-type": "application/json"},
+    "responseBody": {
+      "Session-Id": "",
+      "Result-Code": 2001,
+      "Origin-Host": "mock-pcrf.example.com",
+      "Origin-Realm": "example.com",
+      "Auth-Application-Id": 16777238,
+      "CC-Request-Type": 0,
+      "CC-Request-Number": 0,
+      "Charging-Rule-Install": {
+        "Charging-Rule-Name": "rule-updated"
+      }
+    },
+    "transform": [
+      {
+        "source": "request.body./Session-Id",
+        "target": "response.body.json.string./Session-Id"
+      },
+      {
+        "source": "request.body./CC-Request-Type",
+        "target": "response.body.json.integer./CC-Request-Type"
+      },
+      {
+        "source": "request.body./CC-Request-Number",
+        "target": "response.body.json.unsigned./CC-Request-Number"
+      }
+    ],
+    "outState": "termination"
+  },
+  {
+    "requestMethod": "POST",
+    "requestUri": "/diameter/gx/CCR",
+    "inState": "termination",
+    "responseCode": 200,
+    "responseHeaders": {"content-type": "application/json"},
+    "responseBody": {
+      "Session-Id": "",
+      "Result-Code": 2001,
+      "Origin-Host": "mock-pcrf.example.com",
+      "Origin-Realm": "example.com",
+      "Auth-Application-Id": 16777238,
+      "CC-Request-Type": 0,
+      "CC-Request-Number": 0
+    },
+    "transform": [
+      {
+        "source": "request.body./Session-Id",
+        "target": "response.body.json.string./Session-Id"
+      },
+      {
+        "source": "request.body./CC-Request-Type",
+        "target": "response.body.json.integer./CC-Request-Type"
+      },
+      {
+        "source": "request.body./CC-Request-Number",
+        "target": "response.body.json.unsigned./CC-Request-Number"
+      }
+    ],
+    "outState": "purge"
+  }
+]
