@@ -36,18 +36,20 @@ ARG pboettch_jsonschemavalidator_ver=2.4.0
 ARG jupp0r_prometheuscpp_ver=v1.3.0
 ARG civetweb_civetweb_ver=v1.16
 ARG ert_metrics_ver=v1.3.0
-ARG testillano_nghttp2_ver=master
+ARG testillano_nghttp2_ver=v1.3.0
+ARG nghttp2_ver=1.64.0
+ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.0.0
-ARG ert_diametercomm_ver=master
+ARG ert_diametercomm_ver=v1.0.0
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
 # System packages
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
-    wget tar bzip2 \
-    make cmake g++ \
+    wget tar bzip2 unzip \
+    make cmake g++ autoconf automake libtool pkg-config \
     libssl-dev zlib1g-dev libcurl4-openssl-dev \
     libsctp-dev \
     doxygen graphviz \
@@ -127,13 +129,36 @@ RUN set -x && \
     set +x
 
 # ===========================================================================
-# NGHTTP2 (with asio support, from testillano/nghttp2 repo)
+# PATCHES (from testillano/nghttp2 repo)
 # ===========================================================================
 RUN set -x && \
     wget https://github.com/testillano/nghttp2/archive/${testillano_nghttp2_ver}.tar.gz && \
-    tar xvf ${testillano_nghttp2_ver}.tar.gz && cd nghttp2-*/ && \
-    cd deps && chmod a+x build.sh && ./build.sh && \
-    cd ../.. && rm -rf * && \
+    tar xf ${testillano_nghttp2_ver}.tar.gz && \
+    mv nghttp2-*/deps/patches /patches && \
+    rm -rf nghttp2-* ${testillano_nghttp2_ver}.tar.gz && \
+    set +x
+
+# ===========================================================================
+# NGHTTP2 (tatsuhiro library)
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/nghttp2/nghttp2/releases/download/v${nghttp2_ver}/nghttp2-${nghttp2_ver}.tar.bz2 && \
+    tar xf nghttp2-${nghttp2_ver}.tar.bz2 && cd nghttp2-${nghttp2_ver}/ && \
+    for patch in $(ls /patches/nghttp2/${nghttp2_ver}/*.patch 2>/dev/null); do patch -p1 < ${patch}; done && \
+    ./configure --disable-shared --enable-python-bindings=no && make -j${make_procs} install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
+# NGHTTP2-ASIO
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/nghttp2/nghttp2-asio/archive/refs/heads/${nghttp2_asio_ver}.zip && \
+    unzip ${nghttp2_asio_ver}.zip && cd nghttp2-asio-${nghttp2_asio_ver} && \
+    for patch in $(ls /patches/nghttp2-asio/${nghttp2_asio_ver}/*.patch 2>/dev/null); do patch -p1 < ${patch}; done && \
+    autoreconf -i && automake && autoconf && \
+    ./configure --enable-shared=false && make -j${make_procs} install && \
+    cd .. && rm -rf * && \
     set +x
 
 # ===========================================================================
