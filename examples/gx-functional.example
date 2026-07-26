@@ -1,0 +1,10 @@
+# Gx functional test: single CCR-I/CCA-I through full Diameter pipeline.
+
+PEERS=(
+    "pcrf-mock server gx --server-port 3868 --admin-port 8274 --origin-host pcrf.example.com --origin-realm example.com"
+    "pgw-sim client gx --peer-host localhost --peer-port 3868 --admin-port 8174 --origin-host pgw.example.com --origin-realm example.com"
+)
+
+EXTRA_H2AGENT_ARGS=""
+PEERING_WAIT=4
+TRIGGER="http://localhost:8174/admin/v1/client-provision/send-gx-ccr"

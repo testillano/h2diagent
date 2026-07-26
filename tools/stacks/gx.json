@@ -1,0 +1,5332 @@
+{
+  "name": "DictionaryGx",
+  "application-id": 16777238,
+  "vendor": [
+    {
+      "name": "IETF",
+      "code": 0
+    },
+    {
+      "name": "ERICSSON",
+      "code": 193
+    },
+    {
+      "name": "3GPP2",
+      "code": 5535
+    },
+    {
+      "name": "3GPP",
+      "code": 10415
+    }
+  ],
+  "avp": [
+    {
+      "name": "User-Name",
+      "code": 1,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Framed-IP-Address",
+      "code": 8,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Class",
+      "code": 25,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Session-Timeout",
+      "code": 27,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Called-Station-Id",
+      "code": 30,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Proxy-State",
+      "code": 33,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Acct-Session-Id",
+      "code": 44,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Acct-Multi-Session-Id",
+      "code": 50,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Event-Timestamp",
+      "code": 55,
+      "m-bit": true,
+      "single": {
+        "format": "Time"
+      }
+    },
+    {
+      "name": "Acct-Interim-Interval",
+      "code": 85,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Framed-IPv6-Prefix",
+      "code": 97,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Host-IP-Address",
+      "code": 257,
+      "m-bit": true,
+      "single": {
+        "format": "Address"
+      }
+    },
+    {
+      "name": "Auth-Application-Id",
+      "code": 258,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Acct-Application-Id",
+      "code": 259,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Vendor-Specific-Application-Id",
+      "code": 260,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Vendor-Id",
+            "qual": "1*"
+          },
+          {
+            "type": "Optional",
+            "name": "Auth-Application-Id"
+          },
+          {
+            "type": "Optional",
+            "name": "Acct-Application-Id"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redirect-Host-Usage",
+      "code": 261,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-6",
+        "label": [
+          {
+            "data": "0",
+            "alias": "DONT_CACHE"
+          },
+          {
+            "data": "1",
+            "alias": "ALL_SESSION"
+          },
+          {
+            "data": "2",
+            "alias": "ALL_REALM"
+          },
+          {
+            "data": "3",
+            "alias": "REALM_AND_APPLICATION"
+          },
+          {
+            "data": "4",
+            "alias": "ALL_APPLICATION"
+          },
+          {
+            "data": "5",
+            "alias": "ALL_HOST"
+          },
+          {
+            "data": "6",
+            "alias": "ALL_USER"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redirect-Max-Cache-Time",
+      "code": 262,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Session-Id",
+      "code": 263,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Origin-Host",
+      "code": 264,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Supported-Vendor-Id",
+      "code": 265,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Vendor-Id",
+      "code": 266,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Firmware-Revision",
+      "code": 267,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Result-Code",
+      "code": 268,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32",
+        "label": [
+          {
+            "data": "1001",
+            "alias": "DIAMETER_MULTI_ROUND_AUTH"
+          },
+          {
+            "data": "2001",
+            "alias": "DIAMETER_SUCCESS"
+          },
+          {
+            "data": "2002",
+            "alias": "DIAMETER_LIMITED_SUCCESS"
+          },
+          {
+            "data": "3001",
+            "alias": "DIAMETER_COMMAND_UNSUPPORTED"
+          },
+          {
+            "data": "3002",
+            "alias": "DIAMETER_UNABLE_TO_DELIVER"
+          },
+          {
+            "data": "3003",
+            "alias": "DIAMETER_REALM_NOT_SERVED"
+          },
+          {
+            "data": "3004",
+            "alias": "DIAMETER_TOO_BUSY"
+          },
+          {
+            "data": "3005",
+            "alias": "DIAMETER_LOOP_DETECTED"
+          },
+          {
+            "data": "3006",
+            "alias": "DIAMETER_REDIRECT_INDICATION"
+          },
+          {
+            "data": "3007",
+            "alias": "DIAMETER_APPLICATION_UNSUPPORTED"
+          },
+          {
+            "data": "3008",
+            "alias": "DIAMETER_INVALID_HDR_BITS"
+          },
+          {
+            "data": "3009",
+            "alias": "DIAMETER_INVALID_AVP_BITS"
+          },
+          {
+            "data": "3010",
+            "alias": "DIAMETER_UNKNOWN_PEER"
+          },
+          {
+            "data": "4001",
+            "alias": "DIAMETER_AUTHENTICATION_REJECTED"
+          },
+          {
+            "data": "4002",
+            "alias": "DIAMETER_OUT_OF_SPACE"
+          },
+          {
+            "data": "4003",
+            "alias": "DIAMETER_ELECTION_LOST"
+          },
+          {
+            "data": "4241",
+            "alias": "DIAMETER_NO_AVAILABLE_POLICY_COUNTERS"
+          },
+          {
+            "data": "5001",
+            "alias": "DIAMETER_AVP_UNSUPPORTED"
+          },
+          {
+            "data": "5002",
+            "alias": "DIAMETER_UNKNOWN_SESSION_ID"
+          },
+          {
+            "data": "5003",
+            "alias": "DIAMETER_AUTHORIZATION_REJECTED"
+          },
+          {
+            "data": "5004",
+            "alias": "DIAMETER_INVALID_AVP_VALUE"
+          },
+          {
+            "data": "5005",
+            "alias": "DIAMETER_MISSING_AVP"
+          },
+          {
+            "data": "5006",
+            "alias": "DIAMETER_RESOURCES_EXCEEDED"
+          },
+          {
+            "data": "5007",
+            "alias": "DIAMETER_CONTRADICTING_AVPS"
+          },
+          {
+            "data": "5008",
+            "alias": "DIAMETER_AVP_NOT_ALLOWED"
+          },
+          {
+            "data": "5009",
+            "alias": "DIAMETER_AVP_OCCURS_TOO_MANY_TIMES"
+          },
+          {
+            "data": "5010",
+            "alias": "DIAMETER_NO_COMMON_APPLICATION"
+          },
+          {
+            "data": "5011",
+            "alias": "DIAMETER_UNSUPPORTED_VERSION"
+          },
+          {
+            "data": "5012",
+            "alias": "DIAMETER_UNABLE_TO_COMPLY"
+          },
+          {
+            "data": "5013",
+            "alias": "DIAMETER_INVALID_BIT_IN_HEADER"
+          },
+          {
+            "data": "5014",
+            "alias": "DIAMETER_INVALID_AVP_LENGTH"
+          },
+          {
+            "data": "5015",
+            "alias": "DIAMETER_INVALID_MESSAGE_LENGTH"
+          },
+          {
+            "data": "5016",
+            "alias": "DIAMETER_INVALID_AVP_BIT_COMBO"
+          },
+          {
+            "data": "5017",
+            "alias": "DIAMETER_NO_COMMON_SECURITY"
+          },
+          {
+            "data": "5030",
+            "alias": "DIAMETER_USER_UNKNOWN"
+          },
+          {
+            "data": "5063",
+            "alias": "REQUESTED_SERVICE_NOT_AUTHORIZED"
+          },
+          {
+            "data": "5065",
+            "alias": "IP_CAN_SESSION_NOT_AVAILABLE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Product-Name",
+      "code": 269,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Session-Binding",
+      "code": 270,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Session-Server-Failover",
+      "code": 271,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-3",
+        "label": [
+          {
+            "data": "0",
+            "alias": "REFUSE_SERVICE"
+          },
+          {
+            "data": "1",
+            "alias": "TRY_AGAIN"
+          },
+          {
+            "data": "2",
+            "alias": "ALLOW_SERVICE"
+          },
+          {
+            "data": "3",
+            "alias": "TRY_AGAIN_ALLOW_SERVICE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Multi-Round-Time-Out",
+      "code": 272,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Disconnect-Cause",
+      "code": 273,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2",
+        "label": [
+          {
+            "data": "0",
+            "alias": "REBOOTING"
+          },
+          {
+            "data": "1",
+            "alias": "BUSY"
+          },
+          {
+            "data": "2",
+            "alias": "DO_NOT_WANT_TO_TALK_TO_YOU"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Auth-Request-Type",
+      "code": 274,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-3",
+        "label": [
+          {
+            "data": "1",
+            "alias": "AUTHENTICATE_ONLY"
+          },
+          {
+            "data": "2",
+            "alias": "AUTHORIZE_ONLY"
+          },
+          {
+            "data": "3",
+            "alias": "AUTHORIZE_AUTHENTICATE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Auth-Grace-Period",
+      "code": 276,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Auth-Session-State",
+      "code": 277,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "STATE_MAINTAINED"
+          },
+          {
+            "data": "1",
+            "alias": "NO_STATE_MAINTAINED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Origin-State-Id",
+      "code": 278,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Failed-AVP",
+      "code": 279,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "AVP",
+            "qual": "1*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Proxy-Host",
+      "code": 280,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Error-Message",
+      "code": 281,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Route-Record",
+      "code": 282,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Destination-Realm",
+      "code": 283,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Proxy-Info",
+      "code": 284,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Proxy-Host"
+          },
+          {
+            "type": "Mandatory",
+            "name": "Proxy-State"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Re-Auth-Request-Type",
+      "code": 285,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "AUTHORIZE_ONLY"
+          },
+          {
+            "data": "1",
+            "alias": "AUTHORIZE_AUTHENTICATE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Accounting-Sub-Session-Id",
+      "code": 287,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned64"
+      }
+    },
+    {
+      "name": "Redirect-Host",
+      "code": 292,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterURI"
+      }
+    },
+    {
+      "name": "Destination-Host",
+      "code": 293,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Error-Reporting-Host",
+      "code": 294,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Termination-Cause",
+      "code": 295,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-8",
+        "label": [
+          {
+            "data": "1",
+            "alias": "LOGOUT"
+          },
+          {
+            "data": "2",
+            "alias": "SERVICE_NOT_PROVIDED"
+          },
+          {
+            "data": "3",
+            "alias": "BAD_ANSWER"
+          },
+          {
+            "data": "4",
+            "alias": "ADMINISTRATIVE"
+          },
+          {
+            "data": "5",
+            "alias": "LINK_BROKEN"
+          },
+          {
+            "data": "6",
+            "alias": "AUTH_EXPIRED"
+          },
+          {
+            "data": "7",
+            "alias": "USER_MOVED"
+          },
+          {
+            "data": "8",
+            "alias": "SESSION_TIMEOUT"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Origin-Realm",
+      "code": 296,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterIdentity"
+      }
+    },
+    {
+      "name": "Experimental-Result",
+      "code": 297,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Vendor-Id"
+          },
+          {
+            "type": "Mandatory",
+            "name": "Experimental-Result-Code"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Experimental-Result-Code",
+      "code": 298,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Inband-Security-Id",
+      "code": 299,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "E2E-Sequence",
+      "code": 300,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "AVP",
+            "qual": "2*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CC-Input-Octets",
+      "code": 412,
+      "single": {
+        "format": "Unsigned64"
+      }
+    },
+    {
+      "name": "CC-Output-Octets",
+      "code": 414,
+      "single": {
+        "format": "Unsigned64"
+      }
+    },
+    {
+      "name": "CC-Request-Number",
+      "code": 415,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "CC-Request-Type",
+      "code": 416,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-4",
+        "label": [
+          {
+            "data": "1",
+            "alias": "INITIAL_REQUEST"
+          },
+          {
+            "data": "2",
+            "alias": "UPDATE_REQUEST"
+          },
+          {
+            "data": "3",
+            "alias": "TERMINATION_REQUEST"
+          },
+          {
+            "data": "4",
+            "alias": "EVENT_REQUEST"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CC-Time",
+      "code": 420,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "CC-Total-Octets",
+      "code": 421,
+      "single": {
+        "format": "Unsigned64"
+      }
+    },
+    {
+      "name": "Granted-Service-Unit",
+      "code": 431,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "CC-Total-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Time"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Input-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Output-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Rating-Group",
+      "code": 432,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Redirect-Address-Type",
+      "code": 433,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-3",
+        "label": [
+          {
+            "data": "0",
+            "alias": "IPv4"
+          },
+          {
+            "data": "1",
+            "alias": "IPv6Addr"
+          },
+          {
+            "data": "2",
+            "alias": "URL"
+          },
+          {
+            "data": "3",
+            "alias": "SIP"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redirect-Server-Address",
+      "code": 435,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Service-Identifier",
+      "code": 439,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Subscription-Id",
+      "code": 443,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Subscription-Id-Type"
+          },
+          {
+            "type": "Mandatory",
+            "name": "Subscription-Id-Data"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Subscription-Id-Data",
+      "code": 444,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Used-Service-Unit",
+      "code": 446,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "CC-Total-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Time"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Input-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "CC-Output-Octets"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Subscription-Id-Type",
+      "code": 450,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-4",
+        "label": [
+          {
+            "data": "0",
+            "alias": "END_USER_E164"
+          },
+          {
+            "data": "1",
+            "alias": "END_USER_IMSI"
+          },
+          {
+            "data": "2",
+            "alias": "END_USER_SIP_URI"
+          },
+          {
+            "data": "3",
+            "alias": "END_USER_NAI"
+          },
+          {
+            "data": "4",
+            "alias": "END_USER_PRIVATE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "User-Equipment-Info",
+      "code": 458,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "User-Equipment-Info-Type"
+          },
+          {
+            "type": "Mandatory",
+            "name": "User-Equipment-Info-Value"
+          }
+        ]
+      }
+    },
+    {
+      "name": "User-Equipment-Info-Type",
+      "code": 459,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-3",
+        "label": [
+          {
+            "data": "0",
+            "alias": "IMEISV"
+          },
+          {
+            "data": "1",
+            "alias": "MAC"
+          },
+          {
+            "data": "2",
+            "alias": "EUI64"
+          },
+          {
+            "data": "3",
+            "alias": "MODIFIED_EUI64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "User-Equipment-Info-Value",
+      "code": 460,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Accounting-Record-Type",
+      "code": 480,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-4",
+        "label": [
+          {
+            "data": "1",
+            "alias": "EVENT_RECORD"
+          },
+          {
+            "data": "2",
+            "alias": "START_RECORD"
+          },
+          {
+            "data": "3",
+            "alias": "INTERIM_RECORD"
+          },
+          {
+            "data": "4",
+            "alias": "STOP_RECORD"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Accounting-Realtime-Required",
+      "code": 483,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-3",
+        "label": [
+          {
+            "data": "1",
+            "alias": "DELIVER_AND_GRANT"
+          },
+          {
+            "data": "2",
+            "alias": "GRANT_AND_STORE"
+          },
+          {
+            "data": "3",
+            "alias": "GRANT_AND_LOSE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Accounting-Record-Number",
+      "code": 485,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Rule-Space-Suggestion",
+      "code": 290,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Rule-Space-Decision",
+      "code": 291,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Charging-Rule-Authorization",
+      "code": 1055,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Authorization-State"
+          },
+          {
+            "type": "Optional",
+            "name": "Authorization-State-Change-Time"
+          },
+          {
+            "type": "Optional",
+            "name": "Next-Authorization-State"
+          },
+          {
+            "type": "Optional",
+            "name": "One-Time-Redirect-Control"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Authorization-State",
+      "code": 1056,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-12",
+        "label": [
+          {
+            "data": "0",
+            "alias": "AUTHORIZED"
+          },
+          {
+            "data": "1",
+            "alias": "DENIED_CALENDAR_TIME"
+          },
+          {
+            "data": "2",
+            "alias": "DENIED_ROAMING"
+          },
+          {
+            "data": "3",
+            "alias": "DENIED_QUALITY_OF_SERVICE"
+          },
+          {
+            "data": "4",
+            "alias": "DENIED_BLACKLISTED"
+          },
+          {
+            "data": "5",
+            "alias": "DENIED_TERMINAL"
+          },
+          {
+            "data": "6",
+            "alias": "DENIED_OPERATOR_REASON_ONE"
+          },
+          {
+            "data": "7",
+            "alias": "DENIED_OPERATOR_REASON_TWO"
+          },
+          {
+            "data": "8",
+            "alias": "DENIED_OPERATOR_REASON_THREE"
+          },
+          {
+            "data": "9",
+            "alias": "DENIED_OPERATOR_REASON_FOUR"
+          },
+          {
+            "data": "10",
+            "alias": "DENIED_OPERATOR_REASON_FIVE"
+          },
+          {
+            "data": "11",
+            "alias": "DENIED_UNKNOWN_REASON"
+          },
+          {
+            "data": "12",
+            "alias": "DENIED_USAGE_CONTROL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Gx-Capability-List",
+      "code": 1060,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Content-Filtering-Profile-Id",
+      "code": 1138,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Customer-Id",
+      "code": 1146,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "One-Time-Redirect-Control",
+      "code": 1193,
+      "vendor-name": "ERICSSON",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-10",
+        "label": [
+          {
+            "data": "0",
+            "alias": "INACTIVE"
+          },
+          {
+            "data": "1",
+            "alias": "DEFAULT"
+          },
+          {
+            "data": "2",
+            "alias": "ROAMING"
+          },
+          {
+            "data": "3",
+            "alias": "QBAU"
+          },
+          {
+            "data": "4",
+            "alias": "TIME"
+          },
+          {
+            "data": "5",
+            "alias": "OPERATOR_REASON_ONE"
+          },
+          {
+            "data": "6",
+            "alias": "OPERATOR_REASON_TWO"
+          },
+          {
+            "data": "7",
+            "alias": "OPERATOR_REASON_THREE"
+          },
+          {
+            "data": "8",
+            "alias": "OPERATOR_REASON_FOUR"
+          },
+          {
+            "data": "9",
+            "alias": "OPERATOR_REASON_FIVE"
+          },
+          {
+            "data": "10",
+            "alias": "OPERATOR_REASON_SIX"
+          }
+        ]
+      }
+    },
+    {
+      "name": "3GPP2-BSID",
+      "code": 9010,
+      "vendor-name": "3GPP2",
+      "v-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "3GPP-SGSN-Address",
+      "code": 6,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "3GPP-Charging-Characteristics",
+      "code": 13,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "3GPP-SGSN-IPv6-Address",
+      "code": 15,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "3GPP-SGSN-MCC-MNC",
+      "code": 18,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "3GPP-RAT-Type",
+      "code": 21,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "3GPP-User-Location-Info",
+      "code": 22,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "3GPP-MS-TimeZone",
+      "code": 23,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Access-Network-Charging-Address",
+      "code": 501,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Address"
+      }
+    },
+    {
+      "name": "Access-Network-Charging-Identifier-Value",
+      "code": 503,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "AF-Charging-Identifier",
+      "code": 505,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Flow-Description",
+      "code": 507,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "IPFilterRule"
+      }
+    },
+    {
+      "name": "Flow-Number",
+      "code": 509,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Flows",
+      "code": 510,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Media-Component-Number"
+          },
+          {
+            "type": "Optional",
+            "name": "Flow-Number",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Flow-Status",
+      "code": 511,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-4",
+        "label": [
+          {
+            "data": "0",
+            "alias": "ENABLED-UPLINK"
+          },
+          {
+            "data": "1",
+            "alias": "ENABLED-DOWNLINK"
+          },
+          {
+            "data": "2",
+            "alias": "ENABLED"
+          },
+          {
+            "data": "3",
+            "alias": "DISABLED"
+          },
+          {
+            "data": "4",
+            "alias": "REMOVED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Max-Requested-Bandwidth-DL",
+      "code": 515,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Max-Requested-Bandwidth-UL",
+      "code": 516,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Media-Component-Number",
+      "code": 518,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Required-Access-Info",
+      "code": 536,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "USER_LOCATION"
+          },
+          {
+            "data": "1",
+            "alias": "MS_TIME_ZONE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Information",
+      "code": 618,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Primary-Event-Charging-Function-Name"
+          },
+          {
+            "type": "Optional",
+            "name": "Secondary-Event-Charging-Function-Name"
+          },
+          {
+            "type": "Optional",
+            "name": "Primary-Charging-Collection-Function-Name"
+          },
+          {
+            "type": "Optional",
+            "name": "Secondary-Charging-Collection-Function-Name"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Primary-Event-Charging-Function-Name",
+      "code": 619,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterURI"
+      }
+    },
+    {
+      "name": "Secondary-Event-Charging-Function-Name",
+      "code": 620,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterURI"
+      }
+    },
+    {
+      "name": "Primary-Charging-Collection-Function-Name",
+      "code": 621,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterURI"
+      }
+    },
+    {
+      "name": "Secondary-Charging-Collection-Function-Name",
+      "code": 622,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "DiameterURI"
+      }
+    },
+    {
+      "name": "Supported-Features",
+      "code": 628,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Vendor-Id"
+          },
+          {
+            "type": "Mandatory",
+            "name": "Feature-List-ID"
+          },
+          {
+            "type": "Mandatory",
+            "name": "Feature-List"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Feature-List-ID",
+      "code": 629,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Feature-List",
+      "code": 630,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "RAI",
+      "code": 909,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Bearer-Usage",
+      "code": 1000,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "GENERAL"
+          },
+          {
+            "data": "1",
+            "alias": "IMS_SIGNALLING"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Rule-Install",
+      "code": 1001,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Definition",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Base-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Authorization",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Bearer-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Rule-Activation-Time"
+          },
+          {
+            "type": "Optional",
+            "name": "Rule-DeActivation-Time"
+          },
+          {
+            "type": "Optional",
+            "name": "Resource-Allocation-Notification"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Rule-Remove",
+      "code": 1002,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Base-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Required-Access-Info",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Rule-Definition",
+      "code": 1003,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Charging-Rule-Name"
+          },
+          {
+            "type": "Optional",
+            "name": "Service-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Rating-Group"
+          },
+          {
+            "type": "Optional",
+            "name": "Flow-Information",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Flow-Status"
+          },
+          {
+            "type": "Optional",
+            "name": "QoS-Information"
+          },
+          {
+            "type": "Optional",
+            "name": "Reporting-Level"
+          },
+          {
+            "type": "Optional",
+            "name": "Online"
+          },
+          {
+            "type": "Optional",
+            "name": "Offline"
+          },
+          {
+            "type": "Optional",
+            "name": "Metering-Method"
+          },
+          {
+            "type": "Optional",
+            "name": "Precedence"
+          },
+          {
+            "type": "Optional",
+            "name": "AF-Charging-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Flows",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Monitoring-Key"
+          },
+          {
+            "type": "Optional",
+            "name": "Required-Access-Info",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "TDF-Application-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Redirect-Information"
+          },
+          {
+            "type": "Optional",
+            "name": "Mute-Notification"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Rule-Base-Name",
+      "code": 1004,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Charging-Rule-Name",
+      "code": 1005,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Event-Trigger",
+      "code": 1006,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2,4-4,7-7,12-13,15-17,20-22,25-27,29-29,33-34,39-40,45-45,48",
+        "label": [
+          {
+            "data": "0",
+            "alias": "SGSN_CHANGE"
+          },
+          {
+            "data": "1",
+            "alias": "QOS_CHANGE"
+          },
+          {
+            "data": "2",
+            "alias": "RAT_CHANGE"
+          },
+          {
+            "data": "4",
+            "alias": "PLMN_CHANGE"
+          },
+          {
+            "data": "7",
+            "alias": "IP-CAN-CHANGE"
+          },
+          {
+            "data": "12",
+            "alias": "RAI_CHANGE"
+          },
+          {
+            "data": "13",
+            "alias": "USER_LOCATION_CHANGE"
+          },
+          {
+            "data": "15",
+            "alias": "OUT_OF_CREDIT"
+          },
+          {
+            "data": "16",
+            "alias": "REALLOCATION_OF_CREDIT"
+          },
+          {
+            "data": "17",
+            "alias": "REVALIDATION_TIMEOUT"
+          },
+          {
+            "data": "20",
+            "alias": "DEFAULT_EPS_BEARER_QOS_CHANGE"
+          },
+          {
+            "data": "21",
+            "alias": "AN_GW_CHANGE"
+          },
+          {
+            "data": "22",
+            "alias": "SUCCESSFUL_RESOURCE_ALLOCATION"
+          },
+          {
+            "data": "25",
+            "alias": "UE_TIME_ZONE_CHANGE"
+          },
+          {
+            "data": "26",
+            "alias": "TAI_CHANGE"
+          },
+          {
+            "data": "27",
+            "alias": "ECGI_CHANGE"
+          },
+          {
+            "data": "29",
+            "alias": "APN-AMBR_MODIFICATION_FAILURE"
+          },
+          {
+            "data": "33",
+            "alias": "USAGE_REPORT"
+          },
+          {
+            "data": "34",
+            "alias": "DEFAULT-EPS-BEARER-QOS_MODIFICATION_FAILURE"
+          },
+          {
+            "data": "39",
+            "alias": "APPLICATION_START"
+          },
+          {
+            "data": "40",
+            "alias": "APPLICATION_STOP"
+          },
+          {
+            "data": "45",
+            "alias": "ACCESS_NETWORK_INFO_REPORT"
+          },
+          {
+            "data": "48",
+            "alias": "CHANGE_OF_UE_PRESENCE_IN_PRESENCE_REPORTING_AREA_REPORT"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Metering-Method",
+      "code": 1007,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2",
+        "label": [
+          {
+            "data": "0",
+            "alias": "DURATION"
+          },
+          {
+            "data": "1",
+            "alias": "VOLUME"
+          },
+          {
+            "data": "2",
+            "alias": "DURATION_VOLUME"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Offline",
+      "code": 1008,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "DISABLE_OFFLINE"
+          },
+          {
+            "data": "1",
+            "alias": "ENABLE_OFFLINE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Online",
+      "code": 1009,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "DISABLE_ONLINE"
+          },
+          {
+            "data": "1",
+            "alias": "ENABLE_ONLINE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Precedence",
+      "code": 1010,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Reporting-Level",
+      "code": 1011,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "SERVICE_IDENTIFIER_LEVEL"
+          },
+          {
+            "data": "1",
+            "alias": "RATING_GROUP_LEVEL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ToS-Traffic-Class",
+      "code": 1014,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "QoS-Information",
+      "code": 1016,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "QoS-Class-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Max-Requested-Bandwidth-UL"
+          },
+          {
+            "type": "Optional",
+            "name": "Max-Requested-Bandwidth-DL"
+          },
+          {
+            "type": "Optional",
+            "name": "Guaranteed-Bitrate-UL"
+          },
+          {
+            "type": "Optional",
+            "name": "Guaranteed-Bitrate-DL"
+          },
+          {
+            "type": "Optional",
+            "name": "Bearer-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Allocation-Retention-Priority"
+          },
+          {
+            "type": "Optional",
+            "name": "APN-Aggregate-Max-Bitrate-UL"
+          },
+          {
+            "type": "Optional",
+            "name": "APN-Aggregate-Max-Bitrate-DL"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Charging-Rule-Report",
+      "code": 1018,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Base-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "PCC-Rule-Status"
+          },
+          {
+            "type": "Optional",
+            "name": "Rule-Failure-Code"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PCC-Rule-Status",
+      "code": 1019,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2",
+        "label": [
+          {
+            "data": "0",
+            "alias": "ACTIVE"
+          },
+          {
+            "data": "1",
+            "alias": "INACTIVE"
+          },
+          {
+            "data": "2",
+            "alias": "TEMPORARILY_INACTIVE"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Bearer-Identifier",
+      "code": 1020,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Bearer-Operation",
+      "code": 1021,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2",
+        "label": [
+          {
+            "data": "0",
+            "alias": "TERMINATION"
+          },
+          {
+            "data": "1",
+            "alias": "ESTABLISHMENT"
+          },
+          {
+            "data": "2",
+            "alias": "MODIFICATION"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Access-Network-Charging-Identifier-Gx",
+      "code": 1022,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Access-Network-Charging-Identifier-Value"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Base-Name",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "Charging-Rule-Name",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Bearer-Control-Mode",
+      "code": 1023,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-2",
+        "label": [
+          {
+            "data": "0",
+            "alias": "UE_ONLY"
+          },
+          {
+            "data": "1",
+            "alias": "RESERVED"
+          },
+          {
+            "data": "2",
+            "alias": "UE_NW"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Network-Request-Support",
+      "code": 1024,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "NETWORK_REQUEST_NOT_SUPPORTED"
+          },
+          {
+            "data": "1",
+            "alias": "NETWORK_REQUEST_SUPPORTED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Guaranteed-Bitrate-DL",
+      "code": 1025,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Guaranteed-Bitrate-UL",
+      "code": 1026,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "IP-CAN-Type",
+      "code": 1027,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-7",
+        "label": [
+          {
+            "data": "0",
+            "alias": "3GPP-GPRS"
+          },
+          {
+            "data": "1",
+            "alias": "DOCSIS"
+          },
+          {
+            "data": "2",
+            "alias": "xDSL"
+          },
+          {
+            "data": "3",
+            "alias": "WiMAX"
+          },
+          {
+            "data": "4",
+            "alias": "3GPP2"
+          },
+          {
+            "data": "5",
+            "alias": "3GPP-EPS"
+          },
+          {
+            "data": "6",
+            "alias": "Non-3GPP-EPS"
+          },
+          {
+            "data": "7",
+            "alias": "FBA"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QoS-Class-Identifier",
+      "code": 1028,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-254",
+        "label": [
+          {
+            "data": "1",
+            "alias": "QCI_1"
+          },
+          {
+            "data": "2",
+            "alias": "QCI_2"
+          },
+          {
+            "data": "3",
+            "alias": "QCI_3"
+          },
+          {
+            "data": "4",
+            "alias": "QCI_4"
+          },
+          {
+            "data": "5",
+            "alias": "QCI_5"
+          },
+          {
+            "data": "6",
+            "alias": "QCI_6"
+          },
+          {
+            "data": "7",
+            "alias": "QCI_7"
+          },
+          {
+            "data": "8",
+            "alias": "QCI_8"
+          },
+          {
+            "data": "9",
+            "alias": "QCI_9"
+          },
+          {
+            "data": "10",
+            "alias": "QCI_10"
+          },
+          {
+            "data": "11",
+            "alias": "QCI_11"
+          },
+          {
+            "data": "12",
+            "alias": "QCI_12"
+          },
+          {
+            "data": "13",
+            "alias": "QCI_13"
+          },
+          {
+            "data": "14",
+            "alias": "QCI_14"
+          },
+          {
+            "data": "15",
+            "alias": "QCI_15"
+          },
+          {
+            "data": "16",
+            "alias": "QCI_16"
+          },
+          {
+            "data": "17",
+            "alias": "QCI_17"
+          },
+          {
+            "data": "18",
+            "alias": "QCI_18"
+          },
+          {
+            "data": "19",
+            "alias": "QCI_19"
+          },
+          {
+            "data": "20",
+            "alias": "QCI_20"
+          },
+          {
+            "data": "21",
+            "alias": "QCI_21"
+          },
+          {
+            "data": "22",
+            "alias": "QCI_22"
+          },
+          {
+            "data": "23",
+            "alias": "QCI_23"
+          },
+          {
+            "data": "24",
+            "alias": "QCI_24"
+          },
+          {
+            "data": "25",
+            "alias": "QCI_25"
+          },
+          {
+            "data": "26",
+            "alias": "QCI_26"
+          },
+          {
+            "data": "27",
+            "alias": "QCI_27"
+          },
+          {
+            "data": "28",
+            "alias": "QCI_28"
+          },
+          {
+            "data": "29",
+            "alias": "QCI_29"
+          },
+          {
+            "data": "30",
+            "alias": "QCI_30"
+          },
+          {
+            "data": "31",
+            "alias": "QCI_31"
+          },
+          {
+            "data": "32",
+            "alias": "QCI_32"
+          },
+          {
+            "data": "33",
+            "alias": "QCI_33"
+          },
+          {
+            "data": "34",
+            "alias": "QCI_34"
+          },
+          {
+            "data": "35",
+            "alias": "QCI_35"
+          },
+          {
+            "data": "36",
+            "alias": "QCI_36"
+          },
+          {
+            "data": "37",
+            "alias": "QCI_37"
+          },
+          {
+            "data": "38",
+            "alias": "QCI_38"
+          },
+          {
+            "data": "39",
+            "alias": "QCI_39"
+          },
+          {
+            "data": "40",
+            "alias": "QCI_40"
+          },
+          {
+            "data": "41",
+            "alias": "QCI_41"
+          },
+          {
+            "data": "42",
+            "alias": "QCI_42"
+          },
+          {
+            "data": "43",
+            "alias": "QCI_43"
+          },
+          {
+            "data": "44",
+            "alias": "QCI_44"
+          },
+          {
+            "data": "45",
+            "alias": "QCI_45"
+          },
+          {
+            "data": "46",
+            "alias": "QCI_46"
+          },
+          {
+            "data": "47",
+            "alias": "QCI_47"
+          },
+          {
+            "data": "48",
+            "alias": "QCI_48"
+          },
+          {
+            "data": "49",
+            "alias": "QCI_49"
+          },
+          {
+            "data": "50",
+            "alias": "QCI_50"
+          },
+          {
+            "data": "51",
+            "alias": "QCI_51"
+          },
+          {
+            "data": "52",
+            "alias": "QCI_52"
+          },
+          {
+            "data": "53",
+            "alias": "QCI_53"
+          },
+          {
+            "data": "54",
+            "alias": "QCI_54"
+          },
+          {
+            "data": "55",
+            "alias": "QCI_55"
+          },
+          {
+            "data": "56",
+            "alias": "QCI_56"
+          },
+          {
+            "data": "57",
+            "alias": "QCI_57"
+          },
+          {
+            "data": "58",
+            "alias": "QCI_58"
+          },
+          {
+            "data": "59",
+            "alias": "QCI_59"
+          },
+          {
+            "data": "60",
+            "alias": "QCI_60"
+          },
+          {
+            "data": "61",
+            "alias": "QCI_61"
+          },
+          {
+            "data": "62",
+            "alias": "QCI_62"
+          },
+          {
+            "data": "63",
+            "alias": "QCI_63"
+          },
+          {
+            "data": "64",
+            "alias": "QCI_64"
+          },
+          {
+            "data": "65",
+            "alias": "QCI_65"
+          },
+          {
+            "data": "66",
+            "alias": "QCI_66"
+          },
+          {
+            "data": "67",
+            "alias": "QCI_67"
+          },
+          {
+            "data": "68",
+            "alias": "QCI_68"
+          },
+          {
+            "data": "69",
+            "alias": "QCI_69"
+          },
+          {
+            "data": "70",
+            "alias": "QCI_70"
+          },
+          {
+            "data": "71",
+            "alias": "QCI_71"
+          },
+          {
+            "data": "72",
+            "alias": "QCI_72"
+          },
+          {
+            "data": "73",
+            "alias": "QCI_73"
+          },
+          {
+            "data": "74",
+            "alias": "QCI_74"
+          },
+          {
+            "data": "75",
+            "alias": "QCI_75"
+          },
+          {
+            "data": "76",
+            "alias": "QCI_76"
+          },
+          {
+            "data": "77",
+            "alias": "QCI_77"
+          },
+          {
+            "data": "78",
+            "alias": "QCI_78"
+          },
+          {
+            "data": "79",
+            "alias": "QCI_79"
+          },
+          {
+            "data": "80",
+            "alias": "QCI_80"
+          },
+          {
+            "data": "81",
+            "alias": "QCI_81"
+          },
+          {
+            "data": "82",
+            "alias": "QCI_82"
+          },
+          {
+            "data": "83",
+            "alias": "QCI_83"
+          },
+          {
+            "data": "84",
+            "alias": "QCI_84"
+          },
+          {
+            "data": "85",
+            "alias": "QCI_85"
+          },
+          {
+            "data": "86",
+            "alias": "QCI_86"
+          },
+          {
+            "data": "87",
+            "alias": "QCI_87"
+          },
+          {
+            "data": "88",
+            "alias": "QCI_88"
+          },
+          {
+            "data": "89",
+            "alias": "QCI_89"
+          },
+          {
+            "data": "90",
+            "alias": "QCI_90"
+          },
+          {
+            "data": "91",
+            "alias": "QCI_91"
+          },
+          {
+            "data": "92",
+            "alias": "QCI_92"
+          },
+          {
+            "data": "93",
+            "alias": "QCI_93"
+          },
+          {
+            "data": "94",
+            "alias": "QCI_94"
+          },
+          {
+            "data": "95",
+            "alias": "QCI_95"
+          },
+          {
+            "data": "96",
+            "alias": "QCI_96"
+          },
+          {
+            "data": "97",
+            "alias": "QCI_97"
+          },
+          {
+            "data": "98",
+            "alias": "QCI_98"
+          },
+          {
+            "data": "99",
+            "alias": "QCI_99"
+          },
+          {
+            "data": "100",
+            "alias": "QCI_100"
+          },
+          {
+            "data": "101",
+            "alias": "QCI_101"
+          },
+          {
+            "data": "102",
+            "alias": "QCI_102"
+          },
+          {
+            "data": "103",
+            "alias": "QCI_103"
+          },
+          {
+            "data": "104",
+            "alias": "QCI_104"
+          },
+          {
+            "data": "105",
+            "alias": "QCI_105"
+          },
+          {
+            "data": "106",
+            "alias": "QCI_106"
+          },
+          {
+            "data": "107",
+            "alias": "QCI_107"
+          },
+          {
+            "data": "108",
+            "alias": "QCI_108"
+          },
+          {
+            "data": "109",
+            "alias": "QCI_109"
+          },
+          {
+            "data": "110",
+            "alias": "QCI_110"
+          },
+          {
+            "data": "111",
+            "alias": "QCI_111"
+          },
+          {
+            "data": "112",
+            "alias": "QCI_112"
+          },
+          {
+            "data": "113",
+            "alias": "QCI_113"
+          },
+          {
+            "data": "114",
+            "alias": "QCI_114"
+          },
+          {
+            "data": "115",
+            "alias": "QCI_115"
+          },
+          {
+            "data": "116",
+            "alias": "QCI_116"
+          },
+          {
+            "data": "117",
+            "alias": "QCI_117"
+          },
+          {
+            "data": "118",
+            "alias": "QCI_118"
+          },
+          {
+            "data": "119",
+            "alias": "QCI_119"
+          },
+          {
+            "data": "120",
+            "alias": "QCI_120"
+          },
+          {
+            "data": "121",
+            "alias": "QCI_121"
+          },
+          {
+            "data": "122",
+            "alias": "QCI_122"
+          },
+          {
+            "data": "123",
+            "alias": "QCI_123"
+          },
+          {
+            "data": "124",
+            "alias": "QCI_124"
+          },
+          {
+            "data": "125",
+            "alias": "QCI_125"
+          },
+          {
+            "data": "126",
+            "alias": "QCI_126"
+          },
+          {
+            "data": "127",
+            "alias": "QCI_127"
+          },
+          {
+            "data": "128",
+            "alias": "QCI_128"
+          },
+          {
+            "data": "129",
+            "alias": "QCI_129"
+          },
+          {
+            "data": "130",
+            "alias": "QCI_130"
+          },
+          {
+            "data": "131",
+            "alias": "QCI_131"
+          },
+          {
+            "data": "132",
+            "alias": "QCI_132"
+          },
+          {
+            "data": "133",
+            "alias": "QCI_133"
+          },
+          {
+            "data": "134",
+            "alias": "QCI_134"
+          },
+          {
+            "data": "135",
+            "alias": "QCI_135"
+          },
+          {
+            "data": "136",
+            "alias": "QCI_136"
+          },
+          {
+            "data": "137",
+            "alias": "QCI_137"
+          },
+          {
+            "data": "138",
+            "alias": "QCI_138"
+          },
+          {
+            "data": "139",
+            "alias": "QCI_139"
+          },
+          {
+            "data": "140",
+            "alias": "QCI_140"
+          },
+          {
+            "data": "141",
+            "alias": "QCI_141"
+          },
+          {
+            "data": "142",
+            "alias": "QCI_142"
+          },
+          {
+            "data": "143",
+            "alias": "QCI_143"
+          },
+          {
+            "data": "144",
+            "alias": "QCI_144"
+          },
+          {
+            "data": "145",
+            "alias": "QCI_145"
+          },
+          {
+            "data": "146",
+            "alias": "QCI_146"
+          },
+          {
+            "data": "147",
+            "alias": "QCI_147"
+          },
+          {
+            "data": "148",
+            "alias": "QCI_148"
+          },
+          {
+            "data": "149",
+            "alias": "QCI_149"
+          },
+          {
+            "data": "150",
+            "alias": "QCI_150"
+          },
+          {
+            "data": "151",
+            "alias": "QCI_151"
+          },
+          {
+            "data": "152",
+            "alias": "QCI_152"
+          },
+          {
+            "data": "153",
+            "alias": "QCI_153"
+          },
+          {
+            "data": "154",
+            "alias": "QCI_154"
+          },
+          {
+            "data": "155",
+            "alias": "QCI_155"
+          },
+          {
+            "data": "156",
+            "alias": "QCI_156"
+          },
+          {
+            "data": "157",
+            "alias": "QCI_157"
+          },
+          {
+            "data": "158",
+            "alias": "QCI_158"
+          },
+          {
+            "data": "159",
+            "alias": "QCI_159"
+          },
+          {
+            "data": "160",
+            "alias": "QCI_160"
+          },
+          {
+            "data": "161",
+            "alias": "QCI_161"
+          },
+          {
+            "data": "162",
+            "alias": "QCI_162"
+          },
+          {
+            "data": "163",
+            "alias": "QCI_163"
+          },
+          {
+            "data": "164",
+            "alias": "QCI_164"
+          },
+          {
+            "data": "165",
+            "alias": "QCI_165"
+          },
+          {
+            "data": "166",
+            "alias": "QCI_166"
+          },
+          {
+            "data": "167",
+            "alias": "QCI_167"
+          },
+          {
+            "data": "168",
+            "alias": "QCI_168"
+          },
+          {
+            "data": "169",
+            "alias": "QCI_169"
+          },
+          {
+            "data": "170",
+            "alias": "QCI_170"
+          },
+          {
+            "data": "171",
+            "alias": "QCI_171"
+          },
+          {
+            "data": "172",
+            "alias": "QCI_172"
+          },
+          {
+            "data": "173",
+            "alias": "QCI_173"
+          },
+          {
+            "data": "174",
+            "alias": "QCI_174"
+          },
+          {
+            "data": "175",
+            "alias": "QCI_175"
+          },
+          {
+            "data": "176",
+            "alias": "QCI_176"
+          },
+          {
+            "data": "177",
+            "alias": "QCI_177"
+          },
+          {
+            "data": "178",
+            "alias": "QCI_178"
+          },
+          {
+            "data": "179",
+            "alias": "QCI_179"
+          },
+          {
+            "data": "180",
+            "alias": "QCI_180"
+          },
+          {
+            "data": "181",
+            "alias": "QCI_181"
+          },
+          {
+            "data": "182",
+            "alias": "QCI_182"
+          },
+          {
+            "data": "183",
+            "alias": "QCI_183"
+          },
+          {
+            "data": "184",
+            "alias": "QCI_184"
+          },
+          {
+            "data": "185",
+            "alias": "QCI_185"
+          },
+          {
+            "data": "186",
+            "alias": "QCI_186"
+          },
+          {
+            "data": "187",
+            "alias": "QCI_187"
+          },
+          {
+            "data": "188",
+            "alias": "QCI_188"
+          },
+          {
+            "data": "189",
+            "alias": "QCI_189"
+          },
+          {
+            "data": "190",
+            "alias": "QCI_190"
+          },
+          {
+            "data": "191",
+            "alias": "QCI_191"
+          },
+          {
+            "data": "192",
+            "alias": "QCI_192"
+          },
+          {
+            "data": "193",
+            "alias": "QCI_193"
+          },
+          {
+            "data": "194",
+            "alias": "QCI_194"
+          },
+          {
+            "data": "195",
+            "alias": "QCI_195"
+          },
+          {
+            "data": "196",
+            "alias": "QCI_196"
+          },
+          {
+            "data": "197",
+            "alias": "QCI_197"
+          },
+          {
+            "data": "198",
+            "alias": "QCI_198"
+          },
+          {
+            "data": "199",
+            "alias": "QCI_199"
+          },
+          {
+            "data": "200",
+            "alias": "QCI_200"
+          },
+          {
+            "data": "201",
+            "alias": "QCI_201"
+          },
+          {
+            "data": "202",
+            "alias": "QCI_202"
+          },
+          {
+            "data": "203",
+            "alias": "QCI_203"
+          },
+          {
+            "data": "204",
+            "alias": "QCI_204"
+          },
+          {
+            "data": "205",
+            "alias": "QCI_205"
+          },
+          {
+            "data": "206",
+            "alias": "QCI_206"
+          },
+          {
+            "data": "207",
+            "alias": "QCI_207"
+          },
+          {
+            "data": "208",
+            "alias": "QCI_208"
+          },
+          {
+            "data": "209",
+            "alias": "QCI_209"
+          },
+          {
+            "data": "210",
+            "alias": "QCI_210"
+          },
+          {
+            "data": "211",
+            "alias": "QCI_211"
+          },
+          {
+            "data": "212",
+            "alias": "QCI_212"
+          },
+          {
+            "data": "213",
+            "alias": "QCI_213"
+          },
+          {
+            "data": "214",
+            "alias": "QCI_214"
+          },
+          {
+            "data": "215",
+            "alias": "QCI_215"
+          },
+          {
+            "data": "216",
+            "alias": "QCI_216"
+          },
+          {
+            "data": "217",
+            "alias": "QCI_217"
+          },
+          {
+            "data": "218",
+            "alias": "QCI_218"
+          },
+          {
+            "data": "219",
+            "alias": "QCI_219"
+          },
+          {
+            "data": "220",
+            "alias": "QCI_220"
+          },
+          {
+            "data": "221",
+            "alias": "QCI_221"
+          },
+          {
+            "data": "222",
+            "alias": "QCI_222"
+          },
+          {
+            "data": "223",
+            "alias": "QCI_223"
+          },
+          {
+            "data": "224",
+            "alias": "QCI_224"
+          },
+          {
+            "data": "225",
+            "alias": "QCI_225"
+          },
+          {
+            "data": "226",
+            "alias": "QCI_226"
+          },
+          {
+            "data": "227",
+            "alias": "QCI_227"
+          },
+          {
+            "data": "228",
+            "alias": "QCI_228"
+          },
+          {
+            "data": "229",
+            "alias": "QCI_229"
+          },
+          {
+            "data": "230",
+            "alias": "QCI_230"
+          },
+          {
+            "data": "231",
+            "alias": "QCI_231"
+          },
+          {
+            "data": "232",
+            "alias": "QCI_232"
+          },
+          {
+            "data": "233",
+            "alias": "QCI_233"
+          },
+          {
+            "data": "234",
+            "alias": "QCI_234"
+          },
+          {
+            "data": "235",
+            "alias": "QCI_235"
+          },
+          {
+            "data": "236",
+            "alias": "QCI_236"
+          },
+          {
+            "data": "237",
+            "alias": "QCI_237"
+          },
+          {
+            "data": "238",
+            "alias": "QCI_238"
+          },
+          {
+            "data": "239",
+            "alias": "QCI_239"
+          },
+          {
+            "data": "240",
+            "alias": "QCI_240"
+          },
+          {
+            "data": "241",
+            "alias": "QCI_241"
+          },
+          {
+            "data": "242",
+            "alias": "QCI_242"
+          },
+          {
+            "data": "243",
+            "alias": "QCI_243"
+          },
+          {
+            "data": "244",
+            "alias": "QCI_244"
+          },
+          {
+            "data": "245",
+            "alias": "QCI_245"
+          },
+          {
+            "data": "246",
+            "alias": "QCI_246"
+          },
+          {
+            "data": "247",
+            "alias": "QCI_247"
+          },
+          {
+            "data": "248",
+            "alias": "QCI_248"
+          },
+          {
+            "data": "249",
+            "alias": "QCI_249"
+          },
+          {
+            "data": "250",
+            "alias": "QCI_250"
+          },
+          {
+            "data": "251",
+            "alias": "QCI_251"
+          },
+          {
+            "data": "252",
+            "alias": "QCI_252"
+          },
+          {
+            "data": "253",
+            "alias": "QCI_253"
+          },
+          {
+            "data": "254",
+            "alias": "QCI_254"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QoS-Negotiation",
+      "code": 1029,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "NO_QoS_NEGOTIATION"
+          },
+          {
+            "data": "1",
+            "alias": "QoS_NEGOTIATION_SUPPORTED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QoS-Upgrade",
+      "code": 1030,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "QoS_UPGRADE_NOT_SUPPORTED"
+          },
+          {
+            "data": "1",
+            "alias": "QoS_UPGRADE_SUPPORTED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Rule-Failure-Code",
+      "code": 1031,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "1-15,18",
+        "label": [
+          {
+            "data": "1",
+            "alias": "UNKNOWN_RULE_NAME"
+          },
+          {
+            "data": "2",
+            "alias": "RATING_GROUP_ERROR"
+          },
+          {
+            "data": "3",
+            "alias": "SERVICE_IDENTIFIER_ERROR"
+          },
+          {
+            "data": "4",
+            "alias": "GWPCEF_MALFUNCTION"
+          },
+          {
+            "data": "5",
+            "alias": "RESOURCES_LIMITATION"
+          },
+          {
+            "data": "6",
+            "alias": "MAX_NR_BEARERS_REACHED"
+          },
+          {
+            "data": "7",
+            "alias": "UNKNOWN_BEARER_ID"
+          },
+          {
+            "data": "8",
+            "alias": "MISSING_BEARER_ID"
+          },
+          {
+            "data": "9",
+            "alias": "MISSING_FLOW_INFORMATION"
+          },
+          {
+            "data": "10",
+            "alias": "RESOURCE_ALLOCATION_FAILURE"
+          },
+          {
+            "data": "11",
+            "alias": "UNSUCCESSFUL_QOS_VALIDATION"
+          },
+          {
+            "data": "12",
+            "alias": "INCORRECT_FLOW_INFORMATION"
+          },
+          {
+            "data": "13",
+            "alias": "PS_TO_CS_HANDOVER"
+          },
+          {
+            "data": "14",
+            "alias": "TDF_APPLICATION_IDENTIFIER_ERROR"
+          },
+          {
+            "data": "15",
+            "alias": "NO_BEARER_BOUND"
+          },
+          {
+            "data": "18",
+            "alias": "MISSING_REDIRECT_SERVER_ADDRESS"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RAT-Type",
+      "code": 1032,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1,1000-1004,2000-2003",
+        "label": [
+          {
+            "data": "0",
+            "alias": "WLAN"
+          },
+          {
+            "data": "1",
+            "alias": "VIRTUAL"
+          },
+          {
+            "data": "1000",
+            "alias": "UTRAN"
+          },
+          {
+            "data": "1001",
+            "alias": "GERAN"
+          },
+          {
+            "data": "1002",
+            "alias": "GAN"
+          },
+          {
+            "data": "1003",
+            "alias": "HSPA_EVOLUTION"
+          },
+          {
+            "data": "1004",
+            "alias": "EUTRAN"
+          },
+          {
+            "data": "2000",
+            "alias": "CDMA2000_1X"
+          },
+          {
+            "data": "2001",
+            "alias": "HRPD"
+          },
+          {
+            "data": "2002",
+            "alias": "UMB"
+          },
+          {
+            "data": "2003",
+            "alias": "EHRPD"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Allocation-Retention-Priority",
+      "code": 1034,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "Priority-Level"
+          },
+          {
+            "type": "Optional",
+            "name": "Pre-emption-Capability"
+          },
+          {
+            "type": "Optional",
+            "name": "Pre-emption-Vulnerability"
+          }
+        ]
+      }
+    },
+    {
+      "name": "APN-Aggregate-Max-Bitrate-DL",
+      "code": 1040,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "APN-Aggregate-Max-Bitrate-UL",
+      "code": 1041,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Revalidation-Time",
+      "code": 1042,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Rule-Activation-Time",
+      "code": 1043,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Rule-DeActivation-Time",
+      "code": 1044,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Session-Release-Cause",
+      "code": 1045,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "UNSPECIFIED_REASON"
+          },
+          {
+            "data": "1",
+            "alias": "UE_SUBSCRIPTION_REASON"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Priority-Level",
+      "code": 1046,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "Pre-emption-Capability",
+      "code": 1047,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "PRE-EMPTION_CAPABILITY_ENABLED"
+          },
+          {
+            "data": "1",
+            "alias": "PRE-EMPTION_CAPABILITY_DISABLED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pre-emption-Vulnerability",
+      "code": 1048,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "PRE-EMPTION_VULNERABILITY_ENABLED"
+          },
+          {
+            "data": "1",
+            "alias": "PRE-EMPTION_VULNERABILITY_DISABLED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Default-EPS-Bearer-QoS",
+      "code": 1049,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "QoS-Class-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Allocation-Retention-Priority"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "AN-GW-Address",
+      "code": 1050,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Address"
+      }
+    },
+    {
+      "name": "Authorization-State-Change-Time",
+      "code": 1057,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Time"
+      }
+    },
+    {
+      "name": "Flow-Information",
+      "code": 1058,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Flow-Description"
+          },
+          {
+            "type": "Optional",
+            "name": "Flow-Direction"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Next-Authorization-State",
+      "code": 1059,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "AUTHORIZED"
+          },
+          {
+            "data": "1",
+            "alias": "DENIED_CALENDAR_TIME"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Resource-Allocation-Notification",
+      "code": 1063,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "m-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0",
+        "label": [
+          {
+            "data": "0",
+            "alias": "ENABLE_NOTIFICATION"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Monitoring-Key",
+      "code": 1066,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Usage-Monitoring-Information",
+      "code": 1067,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Monitoring-Key"
+          },
+          {
+            "type": "Optional",
+            "name": "Granted-Service-Unit"
+          },
+          {
+            "type": "Optional",
+            "name": "Used-Service-Unit"
+          },
+          {
+            "type": "Optional",
+            "name": "Usage-Monitoring-Level"
+          },
+          {
+            "type": "Optional",
+            "name": "Usage-Monitoring-Report"
+          },
+          {
+            "type": "Optional",
+            "name": "Usage-Monitoring-Support"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Usage-Monitoring-Level",
+      "code": 1068,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "SESSION_LEVEL"
+          },
+          {
+            "data": "1",
+            "alias": "PCC_RULE_LEVEL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Usage-Monitoring-Report",
+      "code": 1069,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0",
+        "label": [
+          {
+            "data": "0",
+            "alias": "USAGE_MONITORING_REPORT_REQUIRED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Usage-Monitoring-Support",
+      "code": 1070,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0",
+        "label": [
+          {
+            "data": "0",
+            "alias": "USAGE_MONITORING_DISABLED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Flow-Direction",
+      "code": 1080,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-3",
+        "label": [
+          {
+            "data": "0",
+            "alias": "UNSPECIFIED"
+          },
+          {
+            "data": "1",
+            "alias": "DOWNLINK"
+          },
+          {
+            "data": "2",
+            "alias": "UPLINK"
+          },
+          {
+            "data": "3",
+            "alias": "BIDIRECTIONAL"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redirect-Information",
+      "code": 1085,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Redirect-Support"
+          },
+          {
+            "type": "Optional",
+            "name": "Redirect-Address-Type"
+          },
+          {
+            "type": "Optional",
+            "name": "Redirect-Server-Address"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Redirect-Support",
+      "code": 1086,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0-1",
+        "label": [
+          {
+            "data": "0",
+            "alias": "REDIRECTION_DISABLED"
+          },
+          {
+            "data": "1",
+            "alias": "REDIRECTION_ENABLED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TDF-Application-Identifier",
+      "code": 1088,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Application-Detection-Information",
+      "code": 1098,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Mandatory",
+            "name": "TDF-Application-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "TDF-Application-Instance-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Flow-Information",
+            "qual": "*"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TDF-Application-Instance-Identifier",
+      "code": 2802,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "UTF8String"
+      }
+    },
+    {
+      "name": "Mute-Notification",
+      "code": 2809,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Enumerated",
+        "enum": "0",
+        "label": [
+          {
+            "data": "0",
+            "alias": "MUTE_REQUIRED"
+          }
+        ]
+      }
+    },
+    {
+      "name": "User-Location-Info-Time",
+      "code": 2812,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Time"
+      }
+    },
+    {
+      "name": "Presence-Reporting-Area-Elements-List",
+      "code": 2820,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Presence-Reporting-Area-Identifier",
+      "code": 2821,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "OctetString"
+      }
+    },
+    {
+      "name": "Presence-Reporting-Area-Information",
+      "code": 2822,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "grouped": {
+        "avprule": [
+          {
+            "type": "Optional",
+            "name": "Presence-Reporting-Area-Identifier"
+          },
+          {
+            "type": "Optional",
+            "name": "Presence-Reporting-Area-Status"
+          },
+          {
+            "type": "Optional",
+            "name": "Presence-Reporting-Area-Elements-List"
+          },
+          {
+            "type": "Optional",
+            "name": "AVP",
+            "qual": "*"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Presence-Reporting-Area-Status",
+      "code": 2823,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    },
+    {
+      "name": "NetLoc-Access-Support",
+      "code": 2824,
+      "vendor-name": "3GPP",
+      "v-bit": true,
+      "single": {
+        "format": "Unsigned32"
+      }
+    }
+  ],
+  "command": [
+    {
+      "name": "CER",
+      "code": 257,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Host-IP-Address",
+          "qual": "1*"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Vendor-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Product-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Supported-Vendor-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Auth-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Inband-Security-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Vendor-Specific-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Firmware-Revision"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "CEA",
+      "code": 257,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Host-IP-Address",
+          "qual": "1*"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Vendor-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Product-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Supported-Vendor-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Auth-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Inband-Security-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Vendor-Specific-Application-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Firmware-Revision"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "RA-Request",
+      "code": 258,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Auth-Application-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Re-Auth-Request-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "Session-Release-Cause"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Event-Trigger",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Remove",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Install",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Default-EPS-Bearer-QoS"
+        },
+        {
+          "type": "Optional",
+          "name": "QoS-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "Revalidation-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Content-Filtering-Profile-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Usage-Monitoring-Information",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Presence-Reporting-Area-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "RA-Answer",
+      "code": 258,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Optional",
+          "name": "Experimental-Result"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "IP-CAN-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "RAT-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "AN-GW-Address",
+          "qual": "0*2"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-MCC-MNC"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-IPv6-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "RAI"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-User-Location-Info"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-MS-TimeZone"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Report",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Reporting-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "NetLoc-Access-Support"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "ACR",
+      "code": 271,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Accounting-Record-Type"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Accounting-Record-Number"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Application-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Vendor-Specific-Application-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Accounting-Sub-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Multi-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Interim-Interval"
+        },
+        {
+          "type": "Optional",
+          "name": "Accounting-Realtime-Required"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Event-Timestamp"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "ACA",
+      "code": 271,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Accounting-Record-Type"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Accounting-Record-Number"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Application-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Vendor-Specific-Application-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Accounting-Sub-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Multi-Session-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Reporting-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Acct-Interim-Interval"
+        },
+        {
+          "type": "Optional",
+          "name": "Accounting-Realtime-Required"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Event-Timestamp"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "CC-Request",
+      "code": 272,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Auth-Application-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "CC-Request-Type"
+        },
+        {
+          "type": "Mandatory",
+          "name": "CC-Request-Number"
+        },
+        {
+          "type": "Optional",
+          "name": "Destination-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Subscription-Id",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Supported-Features",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Network-Request-Support"
+        },
+        {
+          "type": "Optional",
+          "name": "Bearer-Identifier"
+        },
+        {
+          "type": "Optional",
+          "name": "Bearer-Operation"
+        },
+        {
+          "type": "Optional",
+          "name": "Framed-IP-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "Framed-IPv6-Prefix"
+        },
+        {
+          "type": "Optional",
+          "name": "IP-CAN-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-RAT-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "RAT-Type"
+        },
+        {
+          "type": "Optional",
+          "name": "Termination-Cause"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Equipment-Info"
+        },
+        {
+          "type": "Optional",
+          "name": "QoS-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "QoS-Negotiation"
+        },
+        {
+          "type": "Optional",
+          "name": "QoS-Upgrade"
+        },
+        {
+          "type": "Optional",
+          "name": "Default-EPS-Bearer-QoS"
+        },
+        {
+          "type": "Optional",
+          "name": "AN-GW-Address",
+          "qual": "0*2"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-MCC-MNC"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-SGSN-IPv6-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "RAI"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-User-Location-Info"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-MS-TimeZone"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Location-Info-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Called-Station-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Bearer-Usage"
+        },
+        {
+          "type": "Optional",
+          "name": "Online"
+        },
+        {
+          "type": "Optional",
+          "name": "Offline"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-Charging-Characteristics"
+        },
+        {
+          "type": "Optional",
+          "name": "Gx-Capability-List"
+        },
+        {
+          "type": "Optional",
+          "name": "Rule-Space-Decision"
+        },
+        {
+          "type": "Optional",
+          "name": "Rule-Space-Suggestion"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Report",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Event-Trigger",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Access-Network-Charging-Address"
+        },
+        {
+          "type": "Optional",
+          "name": "Application-Detection-Information",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Access-Network-Charging-Identifier-Gx",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Usage-Monitoring-Information",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Presence-Reporting-Area-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "CC-Answer",
+      "code": 272,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Auth-Application-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "CC-Request-Type"
+        },
+        {
+          "type": "Mandatory",
+          "name": "CC-Request-Number"
+        },
+        {
+          "type": "Optional",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Optional",
+          "name": "Experimental-Result"
+        },
+        {
+          "type": "Optional",
+          "name": "Supported-Features",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Bearer-Control-Mode"
+        },
+        {
+          "type": "Optional",
+          "name": "Event-Trigger",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host-Usage"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Max-Cache-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Remove",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Rule-Install",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Charging-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "Online"
+        },
+        {
+          "type": "Optional",
+          "name": "Offline"
+        },
+        {
+          "type": "Optional",
+          "name": "Content-Filtering-Profile-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "3GPP-Charging-Characteristics"
+        },
+        {
+          "type": "Optional",
+          "name": "Gx-Capability-List"
+        },
+        {
+          "type": "Optional",
+          "name": "QoS-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "Revalidation-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Default-EPS-Bearer-QoS"
+        },
+        {
+          "type": "Optional",
+          "name": "Customer-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Usage-Monitoring-Information",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Presence-Reporting-Area-Information"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "ASR",
+      "code": 274,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Auth-Application-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "ASA",
+      "code": 274,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Reporting-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host-Usage"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Max-Cache-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "STR",
+      "code": 275,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Destination-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Auth-Application-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Termination-Cause"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Destination-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Class",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Route-Record",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "STA",
+      "code": 275,
+      "avprule": [
+        {
+          "type": "Fixed",
+          "name": "Session-Id"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "User-Name"
+        },
+        {
+          "type": "Optional",
+          "name": "Class",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Reporting-Host"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Host-Usage"
+        },
+        {
+          "type": "Optional",
+          "name": "Redirect-Max-Cache-Time"
+        },
+        {
+          "type": "Optional",
+          "name": "Proxy-Info",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "AVP",
+          "qual": "*"
+        }
+      ]
+    },
+    {
+      "name": "DWR",
+      "code": 280,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        }
+      ]
+    },
+    {
+      "name": "DWA",
+      "code": 280,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        },
+        {
+          "type": "Optional",
+          "name": "Origin-State-Id"
+        }
+      ]
+    },
+    {
+      "name": "DPR",
+      "code": 282,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Disconnect-Cause"
+        }
+      ]
+    },
+    {
+      "name": "DPA",
+      "code": 282,
+      "avprule": [
+        {
+          "type": "Mandatory",
+          "name": "Result-Code"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Host"
+        },
+        {
+          "type": "Mandatory",
+          "name": "Origin-Realm"
+        },
+        {
+          "type": "Optional",
+          "name": "Error-Message"
+        },
+        {
+          "type": "Optional",
+          "name": "Failed-AVP",
+          "qual": "*"
+        }
+      ]
+    }
+  ]
+}

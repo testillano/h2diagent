@@ -1,0 +1,883 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "target": {
+                    "limit": 100,
+                    "matchAny": false,
+                    "tags": [],
+                    "type": "dashboard"
+                },
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "links": [],
+    "panels": [
+        {
+            "collapsed": false,
+            "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+            "id": 1,
+            "panels": [],
+            "title": "Overview",
+            "type": "row"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Current active Diameter server peers.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "red", "value": null },
+                            { "color": "yellow", "value": 1 },
+                            { "color": "green", "value": 2 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "diameter_server_active_peers_gauge{source=~\"$source\"}",
+                    "legendFormat": "{{source}} active peers",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Active Server Peers",
+            "type": "stat"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Diameter client peer state (0=closed, 1=open, 2=pending).",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "mappings": [
+                        { "options": { "0": { "text": "CLOSED" } }, "type": "value" },
+                        { "options": { "1": { "text": "OPEN" } }, "type": "value" },
+                        { "options": { "2": { "text": "PENDING" } }, "type": "value" }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "red", "value": null },
+                            { "color": "green", "value": 1 },
+                            { "color": "yellow", "value": 2 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "value_and_name"
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "diameter_client_peer_state_gauge{source=~\"$source\"}",
+                    "legendFormat": "{{source}} peer state",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Client Peer State",
+            "type": "stat"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Server peer connection events over time.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+            "id": 4,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "rate(diameter_server_peer_connections_counter{source=~\"$source\"}[$rate_interval])",
+                    "legendFormat": "{{source}} peer connections/s",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Server Peer Connection Rate",
+            "type": "timeseries"
+        },
+        {
+            "collapsed": false,
+            "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+            "id": 10,
+            "panels": [],
+            "title": "Diameter Server (Inbound)",
+            "type": "row"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of Diameter requests received by the server, grouped by command code.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+            "id": 11,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_server_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
+                    "legendFormat": "{{source}} cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Server Requests Received Rate",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of Diameter answers sent by the server, grouped by command code and result code.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+            "id": 12,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_server_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
+                    "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Server Answers Sent Rate",
+            "type": "timeseries"
+        },
+        {
+            "collapsed": false,
+            "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+            "id": 20,
+            "panels": [],
+            "title": "Diameter Client (Outbound)",
+            "type": "row"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of Diameter requests sent by the client, grouped by command code.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+            "id": 21,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_client_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
+                    "legendFormat": "{{source}} cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Client Requests Sent Rate",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of Diameter answers received by the client, grouped by command code and result code.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+            "id": 22,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_client_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
+                    "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Client Answers Received Rate",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of client request timeouts.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+            "id": 23,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_client_requests_timedout_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
+                    "legendFormat": "{{source}} timeouts cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Client Request Timeouts Rate",
+            "type": "timeseries"
+        },
+        {
+            "collapsed": false,
+            "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+            "id": 30,
+            "panels": [],
+            "title": "Errors",
+            "type": "row"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of unsent client requests (connection errors).",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "fixedColor": "dark-red", "mode": "fixed" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 20,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "red", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+            "id": 31,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_client_requests_unsent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
+                    "legendFormat": "{{source}} unsent cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Client Requests Unsent Rate",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Total unsent requests and timeouts (cumulative counters).",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "yellow", "value": 1 },
+                            { "color": "red", "value": 10 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+            "id": 32,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "horizontal",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(diameter_client_requests_unsent_counter{source=~\"$source\"}) by (source)",
+                    "legendFormat": "{{source}} total unsent",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(diameter_client_requests_timedout_counter{source=~\"$source\"}) by (source)",
+                    "legendFormat": "{{source}} total timeouts",
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "Total Errors (Cumulative)",
+            "type": "stat"
+        },
+        {
+            "collapsed": false,
+            "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+            "id": 40,
+            "panels": [],
+            "title": "Gateway Latency",
+            "type": "row"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of HTTP/2 requests sent by h2diagent towards h2agent vs responses received back. Shows if the internal HTTP/2 hop is keeping up.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "green", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 8, "x": 0, "y": 43 },
+            "id": 41,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "rate(h2diagent_http2_client_requests_sent_counter{source=~\"$source\"}[$rate_interval])",
+                    "legendFormat": "{{source}} sent/s",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "rate(h2diagent_http2_client_responses_received_counter{source=~\"$source\"}[$rate_interval])",
+                    "legendFormat": "{{source}} received/s",
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "Gateway Throughput",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Difference between HTTP/2 requests sent and responses received. Approximates in-flight requests through the gateway, serving as a latency indicator under load.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "fixedColor": "orange", "mode": "fixed" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 20,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "orange", "value": 10 },
+                            { "color": "red", "value": 100 }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 8, "x": 8, "y": 43 },
+            "id": 42,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "h2diagent_http2_client_requests_sent_counter{source=~\"$source\"} - h2diagent_http2_client_responses_received_counter{source=~\"$source\"}",
+                    "legendFormat": "{{source}} pending",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Pending Requests",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Rate of Diameter client request timeouts. When gateway overhead (HTTP/2 hop) is too high, requests may expire before receiving a response.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "fixedColor": "dark-red", "mode": "fixed" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 20,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ { "color": "red", "value": null } ]
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 8, "x": 16, "y": 43 },
+            "id": 43,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "rate(diameter_client_requests_timedout_counter{source=~\"$source\"}[$rate_interval])",
+                    "legendFormat": "{{source}} timeouts/s",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Timeout Rate",
+            "type": "timeseries"
+        }
+    ],
+    "preload": false,
+    "refresh": "10s",
+    "schemaVersion": 42,
+    "tags": ["h2diagent", "diameter"],
+    "templating": {
+        "list": [
+            {
+                "current": {
+                    "selected": true,
+                    "text": "default",
+                    "value": "default"
+                },
+                "hide": 0,
+                "includeAll": false,
+                "multi": false,
+                "name": "datasource",
+                "options": [],
+                "query": "prometheus",
+                "queryValue": "",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "type": "datasource"
+            },
+            {
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "${datasource}"
+                },
+                "definition": "label_values(source)",
+                "hide": 0,
+                "includeAll": true,
+                "multi": true,
+                "name": "source",
+                "options": [],
+                "query": {
+                    "qryType": 1,
+                    "query": "label_values(source)"
+                },
+                "refresh": 2,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "auto": false,
+                "auto_count": 30,
+                "auto_min": "10s",
+                "current": {
+                    "text": "30s",
+                    "value": "30s"
+                },
+                "name": "rate_interval",
+                "options": [
+                    { "selected": false, "text": "1s", "value": "1s" },
+                    { "selected": false, "text": "15s", "value": "15s" },
+                    { "selected": true, "text": "30s", "value": "30s" },
+                    { "selected": false, "text": "1m", "value": "1m" },
+                    { "selected": false, "text": "2m", "value": "2m" },
+                    { "selected": false, "text": "5m", "value": "5m" },
+                    { "selected": false, "text": "10m", "value": "10m" },
+                    { "selected": false, "text": "30m", "value": "30m" },
+                    { "selected": false, "text": "1h", "value": "1h" }
+                ],
+                "query": "1s,15s,30s,1m,2m,5m,10m,30m,1h",
+                "refresh": 2,
+                "type": "interval"
+            }
+        ]
+    },
+    "time": { "from": "now-30m", "to": "now" },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "h2diagent - Diameter Gateway Metrics",
+    "uid": "h2diagent-diameter-001",
+    "version": 1,
+    "weekStart": ""
+}

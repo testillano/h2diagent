@@ -16,20 +16,27 @@ Copyright (c) 2024 Eduardo Ramos
 
 #pragma once
 
+#include <nghttp2/asio_http2.h>
+#include <nghttp2/asio_http2_client.h>
+#include <nghttp2/asio_http2_server.h>
+
+#include <atomic>
+#include <boost/asio.hpp>
 #include <cstdint>
+#include <ert/diametercodec/codec/Message.hpp>
+#include <ert/diametercodec/stack/Dictionary.hpp>
+#include <ert/diametercomm/DiameterClient.hpp>
+#include <ert/diametercomm/DiameterServer.hpp>
+#include <ert/metrics/Metrics.hpp>
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <thread>
+#include <vector>
 
-#include <boost/asio.hpp>
-
-#include <ert/diametercomm/DiameterServer.hpp>
-#include <ert/diametercomm/DiameterClient.hpp>
-#include <ert/diametercodec/stack/Dictionary.hpp>
-
-namespace ert
-{
-namespace h2diagent
-{
+namespace ert {
+namespace h2diagent {
 
 /**
  * Configuration for the Gateway.
@@ -43,7 +50,8 @@ struct GatewayConfig {
     std::string originRealm;
     std::string productName{"h2diagent"};
     uint32_t watchdogIntervalSec{30};
-    std::string dictionaryPath;
+    std::vector<std::string> dictionaryPaths;  // multiple dictionaries supported
+    uint32_t diameterTimeoutMs{5000};          // transaction timeout (outbound send + inbound forward)
 
     // HTTP/2 client (towards h2agent)
     std::string h2agentHost{"localhost"};
@@ -54,20 +62,19 @@ struct GatewayConfig {
 
     // General
     uint16_t adminPort{8074};
-    uint16_t prometheusPort{9090};
+    uint16_t prometheusPort{8085};
     bool metricsEnabled{true};
-    int workers{0}; // 0 = nproc
+    int workers{0};  // 0 = nproc
 };
 
 /**
  * The Gateway: translates between Diameter and HTTP/2+JSON.
  *
- * Inbound flow:  SUT -> Diameter -> h2diagent -> HTTP/2 POST -> h2agent
- * Outbound flow: h2agent client -> HTTP/2 POST -> h2diagent -> Diameter -> SUT
+ * Inbound flow:  Client -> Diameter -> h2diagent -> HTTP/2 POST -> h2agent
+ * Outbound flow: h2agent client -> HTTP/2 POST -> h2diagent -> Diameter -> Server
  */
 class Gateway {
-public:
-
+   public:
     explicit Gateway(boost::asio::io_context& io, const GatewayConfig& config);
     ~Gateway();
 
@@ -85,26 +92,56 @@ public:
      */
     void stop();
 
-private:
+   private:
+    // Inbound: Diameter request from Client -> translate -> forward to h2agent
+    void onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg);
 
-    // Inbound: Diameter request from client -> translate -> forward to h2agent
-    void onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer,
-                           diametercomm::Peer::Buffer&& msg);
+    // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to Server
+    void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
+                                  const nghttp2::asio_http2::header_map& headers,
+                                  std::function<void(int, const std::string&)> respond);
 
-    // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to server
-    void onH2agentOutboundRequest(/* TODO: http2 request params */);
+    // Helper: map application-id to interface name
+    std::string getInterfaceName(uint32_t appId) const;
+    // Helper: map command-code to command abbreviation
+    std::string getCommandName(uint32_t commandCode, bool isRequest) const;
+    // Helper: select dictionary by application-id
+    const diametercodec::stack::Dictionary& getDictionary(uint32_t appId) const;
 
     boost::asio::io_context& io_;
     GatewayConfig config_;
 
+    // Metrics
+    ert::metrics::Metrics* metrics_{};
+
+    // Diameter metrics (Gateway-level, complements diametercomm's enableMetrics)
+    ert::metrics::counter_family_t* diameter_answers_sent_counter_family_ptr_{};
+
+    // HTTP/2 metrics (instrumented directly in Gateway callbacks)
+    ert::metrics::counter_family_t* h2_server_requests_received_counter_family_ptr_{};
+    ert::metrics::counter_family_t* h2_server_responses_sent_counter_family_ptr_{};
+    ert::metrics::counter_family_t* h2_client_requests_sent_counter_family_ptr_{};
+    ert::metrics::counter_family_t* h2_client_responses_received_counter_family_ptr_{};
+
     // Components
     std::unique_ptr<diametercomm::DiameterServer> diameterServer_;
     std::unique_ptr<diametercomm::DiameterClient> diameterClient_;
-    diametercodec::stack::Dictionary dictionary_;
 
-    // TODO: HTTP/2 client (nghttp2 session towards h2agent)
-    // TODO: HTTP/2 server (nghttp2 server for outbound triggers)
+    // Multi-stack dictionaries indexed by Application-Id
+    std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;
+    diametercodec::stack::Dictionary defaultDictionary_;  // fallback for unknown appId
+
+    // HTTP/2 client session (towards h2agent)
+    // Uses its own single-threaded io_context to avoid nghttp2 re-entrancy
+    boost::asio::io_context h2clientIo_{1};
+    std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> h2clientWork_;
+    std::thread h2clientThread_;
+    std::unique_ptr<nghttp2::asio_http2::client::session> h2clientSession_;
+    std::atomic<bool> h2clientConnected_{false};
+
+    // HTTP/2 server (for outbound triggers)
+    std::unique_ptr<nghttp2::asio_http2::server::http2> h2server_;
 };
 
-} // namespace h2diagent
-} // namespace ert
+}  // namespace h2diagent
+}  // namespace ert

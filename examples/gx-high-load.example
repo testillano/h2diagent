@@ -1,0 +1,10 @@
+# Gx High-Load: 1000 CCR-I at 100 CPS, data storage disabled.
+
+PEERS=(
+    "pcrf-load server gx --server-port 3869 --admin-port 8374 --origin-host pcrf-load.example.com --origin-realm example.com"
+    "pgw-load client gx --peer-host localhost --peer-port 3869 --admin-port 8274 --origin-host pgw-load.example.com --origin-realm example.com"
+)
+
+EXTRA_H2AGENT_ARGS="--discard-data"
+PEERING_WAIT=5
+TRIGGER="http://localhost:8274/admin/v1/client-provision/send-gx-ccr?sequenceEnd=999&cps=100"

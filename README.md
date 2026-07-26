@@ -121,6 +121,157 @@ General:
   --help                          This help
 ```
 
+## Peers (quick Diameter endpoint setup)
+
+The `create-peer.sh` tool generates self-contained Diameter peers without needing to understand the internal architecture. Each peer is a directory under `peers/` with everything needed to run.
+
+### Create a peer
+
+```bash
+# Interactive:
+./tools/create-peer.sh
+
+# Non-interactive (default output: ./peers/):
+./tools/create-peer.sh -n pcrf-mock -s "gx rx" -r server --server-port 3868 --admin-port 8274
+
+# Custom output dir (e.g., for git-tracked examples):
+./tools/create-peer.sh -n pgw-sim -s gx -r client --peer-host localhost --peer-port 3868 -o ./examples/peers
+```
+
+### Run peers
+
+```bash
+source examples/peers/pcrf-mock/run.bash    # starts Diameter server (PCRF)
+source examples/peers/pgw-sim/run.bash      # starts Diameter client (PGW), connects to PCRF
+```
+
+### Stop peers
+
+```bash
+source examples/peers/pcrf-mock/stop.bash
+source examples/peers/pgw-sim/stop.bash
+```
+
+### Peer directory structure
+
+```
+peers/<name>/
+  config.env              # generated configuration variables
+  docker-compose.yml      # opaque: h2diagent + h2agent sidecar
+  stacks/                 # Diameter dictionaries (from tools/stacks/)
+    gx.json
+    rx.json
+  programming/            # h2agent provisions (mock behavior)
+    server-matching.json
+    server-provision.json
+  run.bash                # start the peer
+  stop.bash               # stop the peer
+```
+
+### Multi-stack support
+
+A single peer can handle multiple Diameter applications. Use `--dictionary` multiple times (or space-separated stacks in `create-peer.sh`):
+
+```bash
+./tools/create-peer.sh -n pcrf-mock -s "gx rx sy" -r server
+```
+
+All loaded Application-IDs are advertised in the CER/CEA and each message is decoded/encoded with the correct dictionary based on its Application-ID header.
+
+### Available stacks
+
+| Stack | Application-ID | Interface |
+|-------|---------------|-----------|
+| gx | 16777238 | Policy and Charging Control (Gx) |
+| rx | 16777236 | Policy Control over Rx |
+| sy | 16777302 | Spending Limit (Sy) |
+
+Custom stacks can be added to `tools/stacks/` or directly into `peers/<name>/stacks/`.
+
+## Metrics and Monitoring
+
+h2diagent exposes Prometheus metrics on port `8085` (configurable via `--prometheus-port`).
+
+Combined with h2agent's metrics (port `8080`), you get full visibility of both the Diameter and HTTP/2 sides.
+
+### Quick Prometheus setup
+
+Use h2agent's [`prometheus-only.sh`](https://github.com/testillano/h2agent/blob/master/tools/grafana/prometheus-only.sh) script to quickly spin up a Prometheus instance that scrapes both:
+
+```bash
+# From h2agent checkout:
+./tools/grafana/prometheus-only.sh 8080 8085   # h2agent:8080 + h2diagent:8085
+```
+
+### Available metrics
+
+Metrics are exposed in two groups: **Diameter** (from `diametercomm` library via `enableMetrics()`) and **HTTP/2** (instrumented at Gateway level).
+
+The label '**source**' corresponds to the `--product-name` command-line parameter (default: `h2diagent`).
+
+#### Diameter server (inbound)
+
+```
+Counters provided by diametercomm library:
+
+   diameter_server_requests_received_counter [source] [command_code]
+   diameter_server_answers_sent_counter [source] [command_code] [result_code]
+   diameter_server_peer_connections_counter [source] [state: open/closed]
+
+Gauges provided by diametercomm library:
+
+   diameter_server_active_peers_gauge [source]
+```
+
+#### Diameter client (outbound)
+
+```
+Counters provided by diametercomm library:
+
+   diameter_client_requests_sent_counter [source] [command_code]
+   diameter_client_answers_received_counter [source] [command_code] [result_code]
+   diameter_client_requests_timedout_counter [source] [command_code]
+   diameter_client_requests_unsent_counter [source] [command_code]
+
+Gauges provided by diametercomm library:
+
+   diameter_client_peer_state_gauge [source] (1=open, 0=closed)
+```
+
+#### HTTP/2 server (outbound triggers from h2agent)
+
+```
+Counters provided by h2diagent:
+
+   h2diagent_http2_server_requests_received_counter [source] [method]
+   h2diagent_http2_server_responses_sent_counter [source] [method] [status_code]
+```
+
+#### HTTP/2 client (inbound translation towards h2agent)
+
+```
+Counters provided by h2diagent:
+
+   h2diagent_http2_client_requests_sent_counter [source] [method]
+   h2diagent_http2_client_responses_received_counter [source] [method] [status_code]
+```
+
+#### Examples
+
+```bash
+diameter_server_requests_received_counter{source="h2diagent",command_code="272"} 15
+diameter_client_answers_received_counter{source="h2diagent",command_code="272",result_code="2001"} 15
+h2diagent_http2_server_requests_received_counter{source="h2diagent",method="POST"} 15
+h2diagent_http2_client_responses_received_counter{source="h2diagent",method="POST",status_code="200"} 15
+diameter_server_active_peers_gauge{source="h2diagent"} 1
+diameter_client_peer_state_gauge{source="h2diagent"} 1
+```
+
+### Grafana dashboard
+
+A Grafana dashboard JSON is provided at `tools/grafana/grafana/provisioning/dashboards/h2diagent.json`.
+Import it into your Grafana instance and configure the Prometheus datasource. See `tools/grafana/README.md` for details.
+
 ## Related projects
 
 - [h2agent](https://github.com/testillano/h2agent) - HTTP/2 mock service (the brain)
@@ -129,7 +280,7 @@ General:
 
 ## Contributing
 
-Contributions are welcome. Please open an issue first to discuss what you would like to change.
+Check the project [contributing guidelines](./CONTRIBUTING.md).
 
 ## License
 

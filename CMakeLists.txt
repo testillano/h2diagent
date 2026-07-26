@@ -1,78 +1,64 @@
-cmake_minimum_required(VERSION 3.14)
-project(h2diagent VERSION 0.1.0 LANGUAGES CXX)
+############
+# Versions #
+############
+cmake_minimum_required(VERSION 3.5.1)
+project(h2diagent LANGUAGES CXX)
 
+set(MAIN_PROJECT OFF)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(MAIN_PROJECT ON)
+endif()
+
+#############
+# Variables #
+#############
+set(H2DIAGENT_TARGET_NAME ${PROJECT_NAME})
+set(H2DIAGENT_INCLUDE_BUILD_DIR "${PROJECT_SOURCE_DIR}/include")
+
+# C++ Standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(BUILD_UNIT_TEST "Build unit tests" OFF)
+###########
+# Modules #
+###########
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/")
 
-# Output directories
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/Release/bin)
+# Build type
+include(build_type)
+set_cmake_build_type()
 
-# Include paths
-include_directories(${CMAKE_SOURCE_DIR}/include)
+# Compiler flags
+include(compiler_flags)
+set_cmake_compiler_flags()
 
-# Find packages
+# Build directory
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/${CMAKE_BUILD_TYPE}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/${CMAKE_BUILD_TYPE}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/${CMAKE_BUILD_TYPE}/lib)
+
+# CMAKE_PREFIX_PATH
+if(NOT CMAKE_PREFIX_PATH)
+    set(CMAKE_PREFIX_PATH /usr/local)
+endif()
+message(STATUS "CMAKE_PREFIX_PATH is ${CMAKE_PREFIX_PATH}")
+
+################
+# Dependencies #
+################
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(Threads REQUIRED)
 
-# Main executable
-add_executable(h2diagent
-    src/main.cpp
-    src/Gateway.cpp
-)
+##################
+# Subdirectories #
+##################
+add_subdirectory(src)
 
-target_link_libraries(h2diagent
-    ert_logger
-    ert_metrics
-    ert_http2comm
-    ert_diametercodec
-    ert_diametercomm
-    nghttp2_asio
-    nghttp2
-    Boost::system
-    Boost::thread
-    Threads::Threads
-    ssl
-    crypto
-    z
-    prometheus-cpp-pull
-    prometheus-cpp-core
-)
+###########
+# Install #
+###########
+SET(MY_OWN_INSTALL_PREFIX "/opt/h2diagent" CACHE PATH "Prefix prepended to install directories")
+SET(CMAKE_INSTALL_PREFIX "${MY_OWN_INSTALL_PREFIX}" CACHE INTERNAL "Prefix prepended to install directories" FORCE)
 
-# Unit tests
-if(BUILD_UNIT_TEST)
-    enable_testing()
-    find_package(GTest REQUIRED)
-
-    add_executable(unit-test
-        ut/main.cpp
-        ut/Gateway_test.cpp
-        src/Gateway.cpp
-    )
-
-    target_include_directories(unit-test PRIVATE ${CMAKE_SOURCE_DIR}/include)
-
-    target_link_libraries(unit-test
-        GTest::gtest
-        GTest::gtest_main
-        ert_logger
-        ert_metrics
-        ert_http2comm
-        ert_diametercodec
-        ert_diametercomm
-        nghttp2_asio
-        nghttp2
-        Boost::system
-        Boost::thread
-        Threads::Threads
-        ssl
-        crypto
-        z
-        prometheus-cpp-pull
-        prometheus-cpp-core
-    )
-
-    add_test(NAME unit-test COMMAND unit-test)
-endif()
+install(TARGETS ${H2DIAGENT_TARGET_NAME} RUNTIME DESTINATION bin)

@@ -36,12 +36,13 @@ ARG pboettch_jsonschemavalidator_ver=2.4.0
 ARG jupp0r_prometheuscpp_ver=v1.3.0
 ARG civetweb_civetweb_ver=v1.16
 ARG ert_metrics_ver=v1.3.0
+ARG ert_queuedispatcher_ver=v1.1.0
 ARG testillano_nghttp2_ver=v1.3.0
 ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
-ARG ert_diametercodec_ver=v1.0.0
-ARG ert_diametercomm_ver=v1.0.0
+ARG ert_diametercodec_ver=v1.0.2
+ARG ert_diametercomm_ver=v1.0.4
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
@@ -162,6 +163,17 @@ RUN set -x && \
     set +x
 
 # ===========================================================================
+# ERT_QUEUEDISPATCHER
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/testillano/queuedispatcher/archive/${ert_queuedispatcher_ver}.tar.gz && \
+    tar xvf ${ert_queuedispatcher_ver}.tar.gz && cd queuedispatcher-*/ && \
+    cmake -DERT_QUEUEDISPATCHER_BuildExamples=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
+    make -j${make_procs} && make install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
 # ERT_HTTP2COMM
 # ===========================================================================
 RUN set -x && \
@@ -172,12 +184,22 @@ RUN set -x && \
     set +x
 
 # ===========================================================================
+# GOOGLE TEST FRAMEWORK (before diametercodec/diametercomm which build their UTs)
+# ===========================================================================
+RUN set -x && \
+    wget https://github.com/google/googletest/archive/refs/tags/release-$(echo ${google_test_ver} | cut -c2-).tar.gz && \
+    tar xvf release-$(echo ${google_test_ver} | cut -c2-).tar.gz && cd googletest-release*/ && \
+    cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make -j${make_procs} install && \
+    cd .. && rm -rf * && \
+    set +x
+
+# ===========================================================================
 # ERT_DIAMETERCODEC
 # ===========================================================================
 RUN set -x && \
     wget https://github.com/testillano/diametercodec/archive/${ert_diametercodec_ver}.tar.gz && \
     tar xvf ${ert_diametercodec_ver}.tar.gz && cd diametercodec-*/ && \
-    cmake -DERT_DIAMETERCODEC_BuildExamples=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
+    cmake -DERT_DIAMETERCODEC_BuildExamples=OFF -DERT_DIAMETERCODEC_BuildTests=OFF -DCMAKE_BUILD_TYPE=${build_type} . && \
     make -j${make_procs} && make install && \
     cd .. && rm -rf * && \
     set +x
@@ -188,17 +210,7 @@ RUN set -x && \
 RUN set -x && \
     wget https://github.com/testillano/diametercomm/archive/${ert_diametercomm_ver}.tar.gz && \
     tar xvf ${ert_diametercomm_ver}.tar.gz && cd diametercomm-*/ && \
-    cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs} && make install && \
-    cd .. && rm -rf * && \
-    set +x
-
-# ===========================================================================
-# GOOGLE TEST FRAMEWORK
-# ===========================================================================
-RUN set -x && \
-    wget https://github.com/google/googletest/archive/refs/tags/release-$(echo ${google_test_ver} | cut -c2-).tar.gz && \
-    tar xvf release-$(echo ${google_test_ver} | cut -c2-).tar.gz && cd googletest-release*/ && \
-    cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 . && make -j${make_procs} install && \
+    cmake -DERT_DIAMETERCOMM_BuildTests=OFF -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs} && make install && \
     cd .. && rm -rf * && \
     set +x
 
@@ -240,7 +252,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=build /code/build/${build_type}/bin/h2diagent /opt/h2diagent
 
-EXPOSE 3868 8074 8080 9090
+EXPOSE 3868 8080 8085
+# EXPOSE 8074  # admin port (future)
 
 ENTRYPOINT ["/opt/h2diagent"]
 CMD []
