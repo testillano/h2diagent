@@ -43,6 +43,8 @@ for peer_def in "${PEERS[@]}"; do
     ARGS="-n ${NAME} -s \"${STACKS}\" -r ${ROLE} -o ${DEPLOY_DIR}"
     [ -n "${REST}" ] && ARGS="${ARGS} ${REST}"
     [ -n "${EXTRA_H2AGENT_ARGS:-}" ] && ARGS="${ARGS} --extra-h2agent-args \"${EXTRA_H2AGENT_ARGS}\""
+    [ -n "${EXTRA_H2DIAGENT_ARGS:-}" ] && ARGS="${ARGS} --extra-h2diagent-args \"${EXTRA_H2DIAGENT_ARGS}\""
+    [ "${LOG_LEVEL:-Warning}" != "Warning" ] && ARGS="${ARGS} --log-level ${LOG_LEVEL}"
     eval "${PROJECT_DIR}/tools/create-peer.sh ${ARGS}" 2>&1 | grep -E "Peer created|Created"
 done
 echo ""

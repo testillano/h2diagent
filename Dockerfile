@@ -42,7 +42,7 @@ ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.0.2
-ARG ert_diametercomm_ver=v1.0.4
+ARG ert_diametercomm_ver=v1.0.5
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
@@ -229,16 +229,6 @@ RUN cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs}
 
 # =============================================================================
 # Stage: unit-test
-# =============================================================================
-FROM ubuntu:24.04 AS unit-test
-
-ARG build_type=Release
-
-COPY --from=build /code/build/${build_type}/bin/unit-test /opt/unit-test
-
-ENTRYPOINT ["/opt/unit-test"]
-CMD []
-
 # =============================================================================
 # Stage: runtime
 # =============================================================================

@@ -6,5 +6,7 @@ PEERS=(
 )
 
 EXTRA_H2AGENT_ARGS=""
+EXTRA_H2DIAGENT_ARGS=""
+LOG_LEVEL="Warning"
 PEERING_WAIT=4
 TRIGGER="http://localhost:8174/admin/v1/client-provision/send-gx-ccr"

@@ -75,7 +75,8 @@ ask() {
 PEER_NAME="" STACKS="" ROLE=""
 SERVER_PORT="" PEER_HOST="" PEER_PORT=""
 ADMIN_PORT="" ORIGIN_HOST="" ORIGIN_REALM=""
-OUTPUT_DIR="" EXTRA_H2AGENT_ARGS=""
+OUTPUT_DIR="" EXTRA_H2AGENT_ARGS="" EXTRA_H2DIAGENT_ARGS=""
+LOG_LEVEL="${LOG_LEVEL:-Warning}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -91,6 +92,8 @@ while [[ $# -gt 0 ]]; do
         --origin-host) ORIGIN_HOST="$2"; shift 2 ;;
         --origin-realm) ORIGIN_REALM="$2"; shift 2 ;;
         --extra-h2agent-args) EXTRA_H2AGENT_ARGS="$2"; shift 2 ;;
+        --extra-h2diagent-args) EXTRA_H2DIAGENT_ARGS="$2"; shift 2 ;;
+        --log-level) LOG_LEVEL="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
@@ -105,11 +108,16 @@ echo "=== h2diagent Peer Generator ==="
 echo
 
 if [ -z "${PEER_NAME}" ]; then
-    ask "Peer name" "" PEER_NAME
+    ask "Peer name" "test" PEER_NAME
 fi
 
 if [ -z "${PEER_NAME}" ]; then
     echo "ERROR: peer name is required"
+    exit 1
+fi
+
+if ! echo "${PEER_NAME}" | grep -qE '^[a-z0-9][a-z0-9_-]*$'; then
+    echo "ERROR: peer name '${PEER_NAME}' is invalid (must match [a-z0-9][a-z0-9_-]*)"
     exit 1
 fi
 
@@ -119,7 +127,7 @@ if [ -z "${STACKS}" ]; then
 fi
 
 if [ -z "${ROLE}" ]; then
-    ask "Role [server/client/both]" "server" ROLE
+    ask "Role [server/client/both]" "client" ROLE
 fi
 
 # Role-specific questions
@@ -131,12 +139,12 @@ case "${ROLE}" in
         ;;
     client)
         SERVER_PORT="0"
-        [ -z "${PEER_HOST}" ] && ask "Remote peer host" "" PEER_HOST
+        [ -z "${PEER_HOST}" ] && ask "Remote peer host" "localhost" PEER_HOST
         [ -z "${PEER_PORT}" ] && ask "Remote peer port" "${DEFAULT_DIAMETER_PORT}" PEER_PORT
         ;;
     both)
         [ -z "${SERVER_PORT}" ] && ask "Diameter server port" "${DEFAULT_DIAMETER_PORT}" SERVER_PORT
-        [ -z "${PEER_HOST}" ] && ask "Remote peer host" "" PEER_HOST
+        [ -z "${PEER_HOST}" ] && ask "Remote peer host" "localhost" PEER_HOST
         [ -z "${PEER_PORT}" ] && ask "Remote peer port" "${DEFAULT_DIAMETER_PORT}" PEER_PORT
         ;;
     *)
@@ -252,7 +260,10 @@ $([ -n "${PEER_HOST}" ] && echo "      - \"--diameter-peer-host\"
       - "${HTTP2_SERVER_PORT}"
 ${DICT_ARGS}      - "--prometheus-port"
       - "${H2DIAGENT_PROM_PORT}"
+      - "--log-level"
+      - "${LOG_LEVEL}"
       - "--verbose"
+$(for arg in ${EXTRA_H2DIAGENT_ARGS}; do echo "      - \"${arg}\""; done)
     depends_on:
       - h2agent
 
@@ -524,6 +535,7 @@ echo ""
 echo "Usage:"
 echo "  source ${PEER_DIR}/run.bash    # start"
 echo "  source ${PEER_DIR}/stop.bash   # stop"
+echo "  source ${PEER_DIR}/ps.bash     # status"
 echo ""
 echo "h2agent admin: http://localhost:${ADMIN_PORT}"
 [ "${SERVER_PORT}" != "0" ] && echo "Diameter server: localhost:${SERVER_PORT}"
