@@ -42,7 +42,7 @@ ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.0.2
-ARG ert_diametercomm_ver=v1.0.5
+ARG ert_diametercomm_ver=v1.1.0
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------

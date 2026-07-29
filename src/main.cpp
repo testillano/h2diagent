@@ -76,6 +76,9 @@ void signalHandler(int signum) {
 }
 
 int main(int argc, char* argv[]) {
+    // Line-buffered stdout for real-time Docker logs
+    setlinebuf(stdout);
+
     ert::h2diagent::GatewayConfig config;
     bool verbose = false;
     std::string logLevel = "Warning";

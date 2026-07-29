@@ -44,6 +44,9 @@ Options:
   --admin-port <port>     h2agent admin port (default: ${DEFAULT_ADMIN_PORT})
   --origin-host <host>    Origin-Host identity
   --origin-realm <realm>  Origin-Realm (default: ${DEFAULT_ORIGIN_REALM})
+  --log-level <level>     h2diagent log level: Debug|Informational|Warning|Error (default: Warning)
+  --extra-h2agent-args <args>     Extra arguments for h2agent (e.g., "--discard-data")
+  --extra-h2diagent-args <args>   Extra arguments for h2diagent
 
 Available stacks: ${AVAILABLE_STACKS:-none}
 
@@ -282,8 +285,8 @@ $(for arg in ${EXTRA_H2DIAGENT_ARGS}; do echo "      - \"${arg}\""; done)
 $(for arg in ${EXTRA_H2AGENT_ARGS}; do echo "      - \"${arg}\""; done)
 EOF
 
-# --- Generate run.bash ---
-cat > "${PEER_DIR}/run.bash" << 'RUNEOF'
+# --- Generate run.sh ---
+cat > "${PEER_DIR}/run.sh" << 'RUNEOF'
 #!/bin/bash
 # Start peer (sourceable or executable)
 PEER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -329,10 +332,10 @@ fi
 echo "Peer ${PEER_NAME} running."
 cd - &>/dev/null
 RUNEOF
-chmod +x "${PEER_DIR}/run.bash"
+chmod +x "${PEER_DIR}/run.sh"
 
-# --- Generate stop.bash ---
-cat > "${PEER_DIR}/stop.bash" << 'STOPEOF'
+# --- Generate stop.sh ---
+cat > "${PEER_DIR}/stop.sh" << 'STOPEOF'
 #!/bin/bash
 # Stop peer (sourceable or executable)
 PEER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -341,10 +344,10 @@ echo "Stopping peer: ${PEER_NAME}"
 cd "${PEER_DIR}" && docker-compose down
 cd - &>/dev/null
 STOPEOF
-chmod +x "${PEER_DIR}/stop.bash"
+chmod +x "${PEER_DIR}/stop.sh"
 
-# --- Generate ps.bash ---
-cat > "${PEER_DIR}/ps.bash" << 'PSEOF'
+# --- Generate ps.sh ---
+cat > "${PEER_DIR}/ps.sh" << 'PSEOF'
 #!/bin/bash
 # Show peer containers status (sourceable or executable)
 PEER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -357,7 +360,7 @@ echo ""
 cd "${PEER_DIR}" && docker-compose ps
 cd - &>/dev/null
 PSEOF
-chmod +x "${PEER_DIR}/ps.bash"
+chmod +x "${PEER_DIR}/ps.sh"
 
 # --- Generate placeholder programming ---
 if [ "${ROLE}" = "server" ] || [ "${ROLE}" = "both" ]; then
@@ -533,9 +536,9 @@ echo "Files:"
 find "${PEER_DIR}" -type f | sort | sed "s|${PEER_DIR}/|  |"
 echo ""
 echo "Usage:"
-echo "  source ${PEER_DIR}/run.bash    # start"
-echo "  source ${PEER_DIR}/stop.bash   # stop"
-echo "  source ${PEER_DIR}/ps.bash     # status"
+echo "  ${PEER_DIR}/run.sh    # start"
+echo "  ${PEER_DIR}/stop.sh   # stop"
+echo "  ${PEER_DIR}/ps.sh     # status"
 echo ""
 echo "h2agent admin: http://localhost:${ADMIN_PORT}"
 [ "${SERVER_PORT}" != "0" ] && echo "Diameter server: localhost:${SERVER_PORT}"
