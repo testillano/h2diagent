@@ -17,28 +17,44 @@ namespace helpers {
 // Application-ID to interface name mapping
 inline std::string appIdToInterface(uint32_t appId) {
     switch (appId) {
-        case 16777238: return "gx";
-        case 16777236: return "rx";
-        case 16777302: return "sy";
-        case 4: return "cc";
-        default: return "app-" + std::to_string(appId);
+        case 16777238:
+            return "gx";
+        case 16777236:
+            return "rx";
+        case 16777302:
+            return "sy";
+        case 4:
+            return "cc";
+        default:
+            return "app-" + std::to_string(appId);
     }
 }
 
 // Command-code to abbreviation (request form)
 inline std::string commandCodeToName(uint32_t code) {
     switch (code) {
-        case 257: return "CER";
-        case 258: return "RAR";
-        case 265: return "AAR";
-        case 271: return "ACR";
-        case 272: return "CCR";
-        case 274: return "ASR";
-        case 275: return "STR";
-        case 280: return "DWR";
-        case 282: return "DPR";
-        case 300: return "SNR";
-        default: return "CMD-" + std::to_string(code);
+        case 257:
+            return "CER";
+        case 258:
+            return "RAR";
+        case 265:
+            return "AAR";
+        case 271:
+            return "ACR";
+        case 272:
+            return "CCR";
+        case 274:
+            return "ASR";
+        case 275:
+            return "STR";
+        case 280:
+            return "DWR";
+        case 282:
+            return "DPR";
+        case 300:
+            return "SNR";
+        default:
+            return "CMD-" + std::to_string(code);
     }
 }
 
@@ -91,18 +107,29 @@ inline void parseUri(const std::string& uri, uint32_t& appId, uint32_t& commandC
     std::string iface = uri.substr(firstSlash + 1, secondSlash - firstSlash - 1);
     std::string cmd = uri.substr(secondSlash + 1);
 
-    if (iface == "gx") appId = 16777238;
-    else if (iface == "rx") appId = 16777236;
-    else if (iface == "sy") appId = 16777302;
-    else if (iface == "cc") appId = 4;
+    if (iface == "gx")
+        appId = 16777238;
+    else if (iface == "rx")
+        appId = 16777236;
+    else if (iface == "sy")
+        appId = 16777302;
+    else if (iface == "cc")
+        appId = 4;
 
-    if (cmd == "CCR" || cmd == "CCA") commandCode = 272;
-    else if (cmd == "AAR" || cmd == "AAA") commandCode = 265;
-    else if (cmd == "RAR" || cmd == "RAA") commandCode = 258;
-    else if (cmd == "ASR" || cmd == "ASA") commandCode = 274;
-    else if (cmd == "STR" || cmd == "STA") commandCode = 275;
-    else if (cmd == "ACR" || cmd == "ACA") commandCode = 271;
-    else if (cmd == "SNR" || cmd == "SNA") commandCode = 300;
+    if (cmd == "CCR" || cmd == "CCA")
+        commandCode = 272;
+    else if (cmd == "AAR" || cmd == "AAA")
+        commandCode = 265;
+    else if (cmd == "RAR" || cmd == "RAA")
+        commandCode = 258;
+    else if (cmd == "ASR" || cmd == "ASA")
+        commandCode = 274;
+    else if (cmd == "STR" || cmd == "STA")
+        commandCode = 275;
+    else if (cmd == "ACR" || cmd == "ACA")
+        commandCode = 271;
+    else if (cmd == "SNR" || cmd == "SNA")
+        commandCode = 300;
 }
 
 }  // namespace helpers

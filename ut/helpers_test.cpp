@@ -4,6 +4,7 @@ Unit tests for helper functions.
 */
 
 #include <gtest/gtest.h>
+
 #include <ert/h2diagent/helpers.hpp>
 
 using namespace ert::h2diagent::helpers;

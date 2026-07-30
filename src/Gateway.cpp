@@ -431,8 +431,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
     auto fullUri_copy = fullUri;
 
-    h2clientIo_.post([this, peerPtr, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr,
-                                         fullUri_copy]() {
+    h2clientIo_.post([this, peerPtr, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr, fullUri_copy]() {
         boost::system::error_code ec;
         auto req = h2clientSession_->submit(ec, "POST", fullUri_copy, *bodyStr_ptr, std::move(*h_ptr));
 
