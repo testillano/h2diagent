@@ -52,6 +52,9 @@ struct GatewayConfig {
     uint32_t watchdogIntervalSec{30};
     std::vector<std::string> dictionaryPaths;  // multiple dictionaries supported
     uint32_t diameterTimeoutMs{5000};          // transaction timeout (outbound send + inbound forward)
+    // Diameter transport per role (single-homing when SCTP). Default: TCP.
+    diametercomm::Transport diameterServerTransport{diametercomm::Transport::TCP};
+    diametercomm::Transport diameterClientTransport{diametercomm::Transport::TCP};
 
     // HTTP/2 client (towards h2agent)
     std::string h2agentHost{"localhost"};

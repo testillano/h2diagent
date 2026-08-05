@@ -70,6 +70,28 @@ $ docker build --target deps      -t h2diagent_builder .
 $ docker build --target unit-test -t h2diagent_ut .
 ```
 
+### Building against a local (unpublished) diametercomm
+
+By default the `deps` stage downloads the released `diametercomm`
+(`ert_diametercomm_ver` in the `Dockerfile`). To iterate on **unpublished**
+`diametercomm` changes (e.g. before pushing/tagging a new version), inject your
+local working tree into the build:
+
+```bash
+# From the h2diagent repo root. Re-run whenever diametercomm changes.
+$ rsync -a --delete \
+    --exclude='.git' --exclude='build' --exclude='CMakeCache.txt' --exclude='CMakeFiles' \
+    /path/to/testillano_diametercomm.master/ deps-local/diametercomm/
+
+$ ./build.sh --image   # log shows ">>> Using LOCAL diametercomm source"
+```
+
+If `deps-local/diametercomm/CMakeLists.txt` is present the `deps` stage builds
+that source instead of the released tarball; otherwise it falls back to
+`ert_diametercomm_ver`, so canonical/CI builds are unaffected. `deps-local/` is
+git-ignored. Once your `diametercomm` change is published, remove
+`deps-local/diametercomm` and bump `ert_diametercomm_ver` to the new version.
+
 ## Unit tests
 
 ```bash
@@ -102,6 +124,10 @@ Diameter:
   --product-name <name>           Product-Name for CER (default: h2diagent)
   --dictionary <path>             Diameter dictionary JSON file path
   --watchdog-interval <seconds>   DWR interval (default: 30)
+  --diameter-server-transport <tcp|sctp>  Inbound server (listener) transport;
+                                  sctp is single-homing (default: tcp)
+  --diameter-client-transport <tcp|sctp>  Outbound client (to peer) transport;
+                                  sctp is single-homing (default: tcp)
 
 HTTP/2 (towards h2agent):
   --h2agent-host <host>           h2agent traffic server host (default: localhost)

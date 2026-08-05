@@ -10,8 +10,10 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <csignal>
 #include <cstring>
 #include <ert/h2diagent/Gateway.hpp>
+#include <ert/h2diagent/helpers.hpp>
 #include <ert/tracing/Logger.hpp>
 #include <iostream>
+#include <string>
 #include <thread>
 
 const char* progname = "h2diagent";
@@ -33,6 +35,16 @@ https://github.com/testillano/h2diagent
 )" << std::endl;
 }
 
+// Convert a validated transport token ("tcp"/"sctp") to diametercomm::Transport.
+// Validation/normalization is done by helpers::normalizeTransport (unit-tested).
+ert::diametercomm::Transport toTransport(const std::string& normalized) {
+    return normalized == "sctp" ? ert::diametercomm::Transport::SCTP : ert::diametercomm::Transport::TCP;
+}
+
+const char* transportName(ert::diametercomm::Transport t) {
+    return t == ert::diametercomm::Transport::SCTP ? "sctp" : "tcp";
+}
+
 void usage(const char* name) {
     std::cout
         << name << " - C++ HTTP/2 - DIAMETER Gateway Service (translation agent)\n\n"
@@ -47,7 +59,11 @@ void usage(const char* name) {
         << "  --product-name <name>           Product-Name for CER (default: h2diagent)\n"
         << "  --dictionary <path>             Diameter dictionary JSON file (repeatable for multi-stack)\n"
         << "  --watchdog-interval <seconds>   DWR interval (default: 30)\n"
-        << "  --diameter-timeout-ms <ms>      Transaction timeout in milliseconds (default: 5000)\n\n"
+        << "  --diameter-timeout-ms <ms>      Transaction timeout in milliseconds (default: 5000)\n"
+        << "  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport;\n"
+        << "                                  sctp is single-homing (default: tcp)\n"
+        << "  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;\n"
+        << "                                  sctp is single-homing (default: tcp)\n\n"
         << "HTTP/2 (towards h2agent):\n"
         << "  --h2agent-host <host>           h2agent traffic server host (default: localhost)\n"
         << "  --h2agent-port <port>           h2agent traffic server port (default: 8000)\n\n"
@@ -98,6 +114,8 @@ int main(int argc, char* argv[]) {
         {"dictionary", required_argument, nullptr, 0},
         {"watchdog-interval", required_argument, nullptr, 0},
         {"diameter-timeout-ms", required_argument, nullptr, 0},
+        {"diameter-server-transport", required_argument, nullptr, 0},
+        {"diameter-client-transport", required_argument, nullptr, 0},
         {"h2agent-host", required_argument, nullptr, 0},
         {"h2agent-port", required_argument, nullptr, 0},
         {"http2-server-port", required_argument, nullptr, 0},
@@ -135,7 +153,23 @@ int main(int argc, char* argv[]) {
                     config.watchdogIntervalSec = std::stoi(optarg);
                 else if (name == "diameter-timeout-ms")
                     config.diameterTimeoutMs = std::stoi(optarg);
-                else if (name == "h2agent-host")
+                else if (name == "diameter-server-transport") {
+                    std::string norm;
+                    if (!ert::h2diagent::helpers::normalizeTransport(optarg, norm)) {
+                        std::cerr << "Invalid --diameter-server-transport value '" << optarg << "' (expected tcp|sctp)"
+                                  << std::endl;
+                        return 1;
+                    }
+                    config.diameterServerTransport = toTransport(norm);
+                } else if (name == "diameter-client-transport") {
+                    std::string norm;
+                    if (!ert::h2diagent::helpers::normalizeTransport(optarg, norm)) {
+                        std::cerr << "Invalid --diameter-client-transport value '" << optarg << "' (expected tcp|sctp)"
+                                  << std::endl;
+                        return 1;
+                    }
+                    config.diameterClientTransport = toTransport(norm);
+                } else if (name == "h2agent-host")
                     config.h2agentHost = optarg;
                 else if (name == "h2agent-port")
                     config.h2agentPort = std::stoi(optarg);
@@ -189,8 +223,12 @@ int main(int argc, char* argv[]) {
     std::cout << "Log level: " << logLevel << std::endl;
     std::cout << "Verbose (stdout): " << (verbose ? "true" : "false") << std::endl;
     std::cout << "Diameter listen port: " << config.diameterPort << std::endl;
-    if (!config.diameterPeerHost.empty())
+    if (config.diameterPort > 0)
+        std::cout << "Diameter server transport: " << transportName(config.diameterServerTransport) << std::endl;
+    if (!config.diameterPeerHost.empty()) {
         std::cout << "Diameter peer: " << config.diameterPeerHost << ":" << config.diameterPeerPort << std::endl;
+        std::cout << "Diameter client transport: " << transportName(config.diameterClientTransport) << std::endl;
+    }
     std::cout << "Origin-Host: " << config.originHost << std::endl;
     std::cout << "Origin-Realm: " << config.originRealm << std::endl;
     std::cout << "Dictionary: ";

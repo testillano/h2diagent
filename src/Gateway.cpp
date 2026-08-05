@@ -199,7 +199,8 @@ void Gateway::start() {
     }
 
     if (config_.diameterPort > 0) {
-        diameterServer_ = std::make_unique<diametercomm::DiameterServer>(io_, peerConfig);
+        diameterServer_ =
+            std::make_unique<diametercomm::DiameterServer>(io_, peerConfig, config_.diameterServerTransport);
         diameterServer_->enableMetrics(metrics_, config_.productName);
         diameterServer_->setRequestCallback(
             [this](std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg) {
@@ -216,7 +217,8 @@ void Gateway::start() {
 
     // --- Diameter Client (outbound to Server) ---
     if (!config_.diameterPeerHost.empty()) {
-        diameterClient_ = std::make_unique<diametercomm::DiameterClient>(io_, peerConfig);
+        diameterClient_ =
+            std::make_unique<diametercomm::DiameterClient>(io_, peerConfig, config_.diameterClientTransport);
         diameterClient_->enableMetrics(metrics_, config_.productName);
         diameterClient_->setTimeoutCallback([this](uint32_t hbh) {
             LOGWARNING(ert::tracing::Logger::warning(

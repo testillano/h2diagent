@@ -42,7 +42,7 @@ ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.0.2
-ARG ert_diametercomm_ver=v1.1.2
+ARG ert_diametercomm_ver=v1.2.0
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
@@ -206,12 +206,25 @@ RUN set -x && \
 
 # ===========================================================================
 # ERT_DIAMETERCOMM
+# LOCAL-DEV override: if deps-local/diametercomm is populated in the build
+# context, build from that working tree instead of the released
+# ${ert_diametercomm_ver}. Used to iterate on unpublished diametercomm changes.
+# deps-local/ is git-ignored; when it only contains .gitkeep the build falls
+# back to the released tarball, so canonical/CI builds are unaffected.
 # ===========================================================================
+COPY deps-local/ /tmp/deps-local/
 RUN set -x && \
-    wget https://github.com/testillano/diametercomm/archive/${ert_diametercomm_ver}.tar.gz && \
-    tar xvf ${ert_diametercomm_ver}.tar.gz && cd diametercomm-*/ && \
+    if [ -f /tmp/deps-local/diametercomm/CMakeLists.txt ]; then \
+        echo ">>> Using LOCAL diametercomm source (deps-local/diametercomm)" && \
+        cp -r /tmp/deps-local/diametercomm dc-src ; \
+    else \
+        echo ">>> Using released diametercomm ${ert_diametercomm_ver}" && \
+        wget https://github.com/testillano/diametercomm/archive/${ert_diametercomm_ver}.tar.gz && \
+        tar xvf ${ert_diametercomm_ver}.tar.gz && mv diametercomm-*/ dc-src ; \
+    fi && \
+    cd dc-src && rm -rf CMakeCache.txt CMakeFiles && \
     cmake -DERT_DIAMETERCOMM_BuildTests=OFF -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs} && make install && \
-    cd .. && rm -rf * && \
+    cd .. && rm -rf * /tmp/deps-local && \
     set +x
 
 # =============================================================================

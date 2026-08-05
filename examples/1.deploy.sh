@@ -35,7 +35,7 @@ rm -r "${DEPLOY_DIR}" 2>/dev/null || true
 mkdir -p "${DEPLOY_DIR}"
 
 # Save which example is deployed (for other scripts)
-cp "${SCRIPT_DIR}/${EXAMPLE}" "${DEPLOY_DIR}/config.sh"
+cp "${SCRIPT_DIR}/${EXAMPLE}" "${DEPLOY_DIR}/config.bash"
 
 echo "Deploying: $(basename ${EXAMPLE} .example)"
 for peer_def in "${PEERS[@]}"; do

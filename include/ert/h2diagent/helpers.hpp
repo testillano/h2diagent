@@ -132,6 +132,21 @@ inline void parseUri(const std::string& uri, uint32_t& appId, uint32_t& commandC
         commandCode = 300;
 }
 
+// Normalize a Diameter transport CLI token. Accepts "tcp"/"sctp"
+// case-insensitively. On success sets 'normalized' to the lowercase canonical
+// form ("tcp" or "sctp") and returns true; on any other value returns false and
+// leaves 'normalized' unchanged.
+inline bool normalizeTransport(const std::string& value, std::string& normalized) {
+    std::string v;
+    v.reserve(value.size());
+    for (char c : value) v.push_back(static_cast<char>((c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c));
+    if (v == "tcp" || v == "sctp") {
+        normalized = v;
+        return true;
+    }
+    return false;
+}
+
 }  // namespace helpers
 }  // namespace h2diagent
 }  // namespace ert

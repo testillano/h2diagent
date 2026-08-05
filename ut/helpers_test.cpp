@@ -146,3 +146,36 @@ TEST(Helpers, ParseUri_Invalid) {
     EXPECT_EQ(appId, 0u);
     EXPECT_EQ(code, 0u);
 }
+
+// =============================================================================
+// normalizeTransport (CLI --diameter-*-transport parsing)
+// =============================================================================
+TEST(Helpers, NormalizeTransport_Tcp) {
+    std::string norm;
+    EXPECT_TRUE(normalizeTransport("tcp", norm));
+    EXPECT_EQ(norm, "tcp");
+}
+
+TEST(Helpers, NormalizeTransport_Sctp) {
+    std::string norm;
+    EXPECT_TRUE(normalizeTransport("sctp", norm));
+    EXPECT_EQ(norm, "sctp");
+}
+
+TEST(Helpers, NormalizeTransport_CaseInsensitive) {
+    std::string norm;
+    EXPECT_TRUE(normalizeTransport("TCP", norm));
+    EXPECT_EQ(norm, "tcp");
+    EXPECT_TRUE(normalizeTransport("ScTp", norm));
+    EXPECT_EQ(norm, "sctp");
+}
+
+TEST(Helpers, NormalizeTransport_InvalidRejected) {
+    std::string norm = "unchanged";
+    EXPECT_FALSE(normalizeTransport("udp", norm));
+    EXPECT_EQ(norm, "unchanged");  // left untouched on failure
+    EXPECT_FALSE(normalizeTransport("", norm));
+    EXPECT_FALSE(normalizeTransport("tcp ", norm));  // trailing space is not a valid token
+    EXPECT_FALSE(normalizeTransport("sctpx", norm));
+    EXPECT_EQ(norm, "unchanged");
+}
