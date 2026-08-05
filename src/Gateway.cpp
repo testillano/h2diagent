@@ -7,6 +7,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <nghttp2/asio_http2_client.h>
 #include <nghttp2/asio_http2_server.h>
 
+#include <atomic>
 #include <ert/diametercodec/codec/Avp.hpp>
 #include <ert/diametercodec/codec/Message.hpp>
 #include <ert/h2diagent/Gateway.hpp>
@@ -277,7 +278,20 @@ void Gateway::start() {
             auto uri = std::make_shared<std::string>(req.uri().path);
             auto headers = std::make_shared<nghttp2::asio_http2::header_map>(req.header());
 
-            req.on_data([this, &res, body, method, uri, headers](const uint8_t* data, std::size_t len) {
+            // The Diameter answer callback that produces the response runs on the Diameter
+            // client IO thread, not on this HTTP/2 server stream's thread. nghttp2 response
+            // objects are NOT thread-safe and are only valid while the stream is open, so we
+            // must (1) marshal the write back onto the stream's own io_service, and (2) guard
+            // against the stream having been closed/destroyed meanwhile (avoids use-after-free
+            // and cross-thread nghttp2 access -> SIGSEGV under concurrent load).
+            auto closed = std::make_shared<std::atomic<bool>>(false);
+            res.on_close([closed](uint32_t) { closed->store(true); });
+            // The io_service outlives individual streams; capture it by pointer (valid even
+            // after the stream closes) so we can post to it from the foreign thread.
+            auto* serverIo = &res.io_service();
+
+            req.on_data([this, &res, serverIo, body, method, uri, headers, closed](const uint8_t* data,
+                                                                                   std::size_t len) {
                 if (len > 0) {
                     body->append(reinterpret_cast<const char*>(data), len);
                 } else {
@@ -289,18 +303,26 @@ void Gateway::start() {
                     }
                     onH2agentOutboundRequest(
                         *method, *uri, *body, *headers,
-                        [this, &res, method](int statusCode, const std::string& responseBody) {
-                            if (metrics_) {
-                                auto& counter = h2_server_responses_sent_counter_family_ptr_->Add(
-                                    {{"source", config_.productName},
-                                     {"method", *method},
-                                     {"status_code", std::to_string(statusCode)}});
-                                counter.Increment();
-                            }
-                            nghttp2::asio_http2::header_map h;
-                            h.emplace("content-type", nghttp2::asio_http2::header_value{"application/json", false});
-                            res.write_head(statusCode, h);
-                            res.end(responseBody);
+                        [this, &res, serverIo, method, closed](int statusCode, const std::string& responseBody) {
+                            // This may run on a foreign (Diameter client) thread. Marshal the
+                            // response write onto the HTTP/2 server stream's io_service, where
+                            // on_close is also serialized, then re-check the closed flag.
+                            serverIo->post([this, &res, method, closed, statusCode, responseBody]() {
+                                if (closed->load()) {
+                                    return;  // stream already closed: do not touch res
+                                }
+                                if (metrics_) {
+                                    auto& counter = h2_server_responses_sent_counter_family_ptr_->Add(
+                                        {{"source", config_.productName},
+                                         {"method", *method},
+                                         {"status_code", std::to_string(statusCode)}});
+                                    counter.Increment();
+                                }
+                                nghttp2::asio_http2::header_map h;
+                                h.emplace("content-type", nghttp2::asio_http2::header_value{"application/json", false});
+                                res.write_head(statusCode, h);
+                                res.end(responseBody);
+                            });
                         });
                 }
             });
