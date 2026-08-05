@@ -3,4 +3,5 @@ build/
 .vscode/
 cmake-build-*/
 peers
-deps-local/
+deps-local/*
+!deps-local/.gitkeep
