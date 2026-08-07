@@ -1,0 +1,39 @@
+{{/*
+h2agent troubleshooting helpers for the sidecar, mirroring the default h2agent
+chart. Provides:
+  - native-helpers.bash : the h2agent function library (bundled by ct/test.sh
+                          from the h2agent tools; absent -> only variables below)
+  - helpers.bash        : thin wrapper that sets this peer's ports and sources
+                          native-helpers.bash if present.
+Mounted at .Values.h2agent.utilsMountPath and sourced into ~/.bashrc via the
+sidecar postStart hook.
+*/}}
+{{- if .Values.h2agent.utilsMountPath }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "h2diagent.name" . }}-h2agent-helpers
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+data:
+{{ (.Files.Glob "helpers/native-helpers.bash").AsConfig | indent 2 }}
+  helpers.bash: |
+    #!/bin/echo "source me!"
+
+    #######################
+    # VARIABLES FROM HELM #
+    #######################
+    PNAME="{{ .Values.nameOverride | default .Values.productName }}"
+    TRAFFIC_PORT="{{ .Values.h2agent.trafficPort }}"
+    ADMIN_PORT="{{ .Values.h2agent.adminPort }}"
+    METRICS_PORT="{{ .Values.h2agent.prometheusPort }}"
+    CURL=${CURL:-"curl -s -i --http2-prior-knowledge"}
+
+    #############
+    # EXECUTION #
+    #############
+
+    # Source native helpers if bundled:
+    [ -f "{{ .Values.h2agent.utilsMountPath }}/native-helpers.bash" ] && \
+      source "{{ .Values.h2agent.utilsMountPath }}/native-helpers.bash"
+{{- end }}

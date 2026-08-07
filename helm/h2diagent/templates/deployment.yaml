@@ -1,0 +1,197 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "h2diagent.name" . }}
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "h2diagent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "h2diagent.selectorLabels" . | nindent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      volumes:
+        - name: {{ include "h2diagent.name" . }}-dictionaries
+          configMap:
+            name: {{ include "h2diagent.name" . }}-dictionaries
+        {{- if .Values.utilsMountPath }}
+        - name: {{ include "h2diagent.name" . }}-h2diagent-helpers
+          configMap:
+            name: {{ include "h2diagent.name" . }}-h2diagent-helpers
+        {{- end }}
+        {{- if .Values.h2agent.utilsMountPath }}
+        - name: {{ include "h2diagent.name" . }}-h2agent-helpers
+          configMap:
+            name: {{ include "h2diagent.name" . }}-h2agent-helpers
+        {{- end }}
+      containers:
+        # ---------------------------------------------------------------------
+        # h2diagent: Diameter <-> HTTP/2 translation gateway
+        # ---------------------------------------------------------------------
+        - name: h2diagent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: {{ include "h2diagent.name" . }}-dictionaries
+              mountPath: /opt/stacks
+            {{- if .Values.utilsMountPath }}
+            - name: {{ include "h2diagent.name" . }}-h2diagent-helpers
+              mountPath: {{ .Values.utilsMountPath }}
+            {{- end }}
+          # h2diagent connects to its dependencies once at startup and does not
+          # currently reconnect. To make startup deterministic in Kubernetes
+          # (pod/container ordering is not guaranteed), wait for the local
+          # h2agent sidecar and (for a client) the remote Diameter peer to be
+          # listening before exec'ing the gateway. Uses bash /dev/tcp (no nc).
+          command:
+            - /bin/bash
+            - -c
+            - |
+              wait_tcp() {
+                host="$1"; port="$2"; echo "[wait] $host:$port ..."
+                i=0
+                while [ $i -lt 180 ]; do
+                  if (exec 3<>/dev/tcp/$host/$port) 2>/dev/null; then
+                    echo "[wait] $host:$port is up"; return 0
+                  fi
+                  i=$((i + 1)); sleep 1
+                done
+                echo "[wait] timeout waiting for $host:$port" >&2; return 1
+              }
+              wait_tcp 127.0.0.1 {{ .Values.h2agent.trafficPort }} || exit 1
+              {{- if and (or (eq .Values.role "client") (eq .Values.role "both")) (ne .Values.diameter.peerHost "") }}
+              wait_tcp {{ .Values.diameter.peerHost | quote }} {{ .Values.diameter.peerPort }} || exit 1
+              {{- end }}
+              echo "[wait] dependencies ready; starting h2diagent"
+              exec /opt/h2diagent "$@"
+            - h2diagent
+          args:
+            - "--diameter-port"
+            {{- if include "h2diagent.hasServer" . }}
+            - {{ .Values.diameter.serverPort | quote }}
+            {{- else }}
+            - "0"
+            {{- end }}
+            {{- if and (or (eq .Values.role "client") (eq .Values.role "both")) (ne .Values.diameter.peerHost "") }}
+            - "--diameter-peer-host"
+            - {{ .Values.diameter.peerHost | quote }}
+            - "--diameter-peer-port"
+            - {{ .Values.diameter.peerPort | quote }}
+            {{- end }}
+            - "--origin-host"
+            - {{ .Values.originHost | quote }}
+            - "--origin-realm"
+            - {{ .Values.originRealm | quote }}
+            - "--product-name"
+            - {{ .Values.productName | quote }}
+            {{- range .Values.stacks }}
+            - "--dictionary"
+            - "/opt/stacks/{{ . }}.json"
+            {{- end }}
+            - "--watchdog-interval"
+            - {{ .Values.diameter.watchdogInterval | quote }}
+            - "--diameter-timeout-ms"
+            - {{ .Values.diameter.timeoutMs | quote }}
+            - "--diameter-server-transport"
+            - {{ .Values.diameter.serverTransport | quote }}
+            - "--diameter-client-transport"
+            - {{ .Values.diameter.clientTransport | quote }}
+            - "--h2agent-host"
+            - "localhost"
+            - "--h2agent-port"
+            - {{ .Values.h2agent.trafficPort | quote }}
+            - "--http2-server-port"
+            - {{ .Values.http2ServerPort | quote }}
+            {{- if .Values.metrics.enabled }}
+            - "--prometheus-port"
+            - {{ .Values.prometheusPort | quote }}
+            {{- else }}
+            - "--disable-metrics"
+            {{- end }}
+            - "--log-level"
+            - {{ .Values.logLevel | quote }}
+            {{- if .Values.verbose }}
+            - "--verbose"
+            {{- end }}
+          # h2diagent has no admin/health endpoint (admin-port is not implemented),
+          # so readiness is a TCP check on the always-on HTTP/2 server port.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.http2ServerPort }}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.http2ServerPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- if .Values.utilsMountPath }}
+          # Source the h2diagent metric helpers into interactive shells (kubectl exec).
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - echo "source '{{ .Values.utilsMountPath }}/helpers.bash'" >> ~/.bashrc
+          {{- end }}
+        # ---------------------------------------------------------------------
+        # h2agent sidecar: HTTP/2 mock brain (reached over localhost)
+        # ---------------------------------------------------------------------
+        - name: h2agent
+          image: "{{ .Values.h2agent.image.repository }}:{{ .Values.h2agent.image.tag }}"
+          imagePullPolicy: {{ .Values.h2agent.image.pullPolicy }}
+          {{- if .Values.h2agent.utilsMountPath }}
+          volumeMounts:
+            - name: {{ include "h2diagent.name" . }}-h2agent-helpers
+              mountPath: {{ .Values.h2agent.utilsMountPath }}
+          {{- end }}
+          args:
+            - "--log-level"
+            - {{ .Values.h2agent.logLevel | quote }}
+            {{- if .Values.h2agent.verbose }}
+            - "--verbose"
+            {{- end }}
+            - "--admin-port"
+            - {{ .Values.h2agent.adminPort | quote }}
+            - "--traffic-server-port"
+            - {{ .Values.h2agent.trafficPort | quote }}
+            - "--prometheus-port"
+            - {{ .Values.h2agent.prometheusPort | quote }}
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -sf
+                - --http2-prior-knowledge
+                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v1/health
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -sf
+                - --http2-prior-knowledge
+                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v1/health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- if .Values.h2agent.utilsMountPath }}
+          # Source the h2agent helpers into interactive shells (kubectl exec),
+          # mirroring the default h2agent chart.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - echo "source '{{ .Values.h2agent.utilsMountPath }}/helpers.bash'" >> ~/.bashrc
+          {{- end }}

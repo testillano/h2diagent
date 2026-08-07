@@ -1,0 +1,22 @@
+{{/*
+Diameter dictionaries mounted into the h2diagent container at /opt/stacks.
+Files come from this chart's dictionaries/ directory (populated by ct/test.sh
+from tools/stacks before packaging). Only the stacks listed in .Values.stacks
+are referenced via --dictionary, but every bundled file is made available.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "h2diagent.name" . }}-dictionaries
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+data:
+{{- $found := false }}
+{{- range $path, $bytes := .Files.Glob "dictionaries/*.json" }}
+{{- $found = true }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- if not $found }}
+{{ fail "No dictionaries found: copy the required stacks (e.g. gx.json) into helm/h2diagent/dictionaries/ (ct/test.sh does this automatically)" }}
+{{- end }}

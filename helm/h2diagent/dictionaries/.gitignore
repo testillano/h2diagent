@@ -1,0 +1,5 @@
+# Diameter dictionaries are copied here from ../../tools/stacks by ct/test.sh
+# before the chart is packaged. Keep the directory in git but ignore the
+# (large, generated) dictionary payloads.
+*.json
+!.gitignore

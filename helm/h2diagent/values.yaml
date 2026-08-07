@@ -1,0 +1,89 @@
+# Default values for the h2diagent chart.
+#
+# Deploys a single Diameter peer as one pod with two containers:
+#   - h2diagent : Diameter <-> HTTP/2 translation gateway
+#   - h2agent   : HTTP/2 mock (the "brain"), sidecar reached over localhost
+#
+# A peer plays a Diameter "role":
+#   server -> h2diagent listens for inbound Diameter (diameter.serverPort)
+#   client -> h2diagent dials a remote peer (diameter.peerHost:peerPort)
+#   both   -> listens and dials
+#
+# Ports are identical across peers on purpose: each peer is its own pod/Service,
+# so there are no collisions and the CT can address them by Service DNS name.
+
+replicaCount: 1
+
+# Set by the wrapper chart (ct-h2diagent) to "server"/"client" so that the two
+# subchart instances get distinct resource names.
+nameOverride: ""
+
+# Diameter role: server | client | both
+role: server
+
+# Diameter identity (advertised in CER).
+originHost: h2diagent.example.com
+originRealm: example.com
+productName: h2diagent
+
+# Diameter stacks (dictionaries). Each name must have a matching
+# dictionaries/<name>.json file bundled in the chart (mounted at /opt/stacks).
+stacks:
+  - gx
+
+diameter:
+  # Inbound listener port (server/both). 0 disables the listener (pure client).
+  serverPort: 3868
+  # Outbound peer (client/both). peerHost is typically the "server" Service name.
+  peerHost: ""
+  peerPort: 3868
+  watchdogInterval: 30
+  timeoutMs: 5000
+  # tcp | sctp  (sctp is single-homing; CT uses tcp)
+  serverTransport: tcp
+  clientTransport: tcp
+
+# HTTP/2 server where the h2agent sidecar posts outbound triggers.
+# Kept away from h2agent.prometheusPort (8080) to avoid in-pod collision.
+http2ServerPort: 8081
+
+logLevel: Warning
+verbose: true
+
+image:
+  repository: ghcr.io/testillano/h2diagent
+  tag: latest
+  pullPolicy: IfNotPresent
+
+prometheusPort: 8085
+metrics:
+  enabled: true
+
+# Mount h2diagent's own helpers (tools/helpers.bash) into the h2diagent
+# container and source them on start (into ~/.bashrc). h2diagent has no admin
+# REST API, so these are metric shortcuts (metrics, traffic_summary) over the
+# Prometheus endpoint. Set to "" to disable.
+utilsMountPath: /opt/utils
+
+# h2agent sidecar (the mock brain), reached by h2diagent over localhost.
+h2agent:
+  image:
+    repository: ghcr.io/testillano/h2agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  adminPort: 8074
+  trafficPort: 8000
+  prometheusPort: 8080
+  logLevel: Warning
+  verbose: true
+  # Mount the h2agent troubleshooting helpers (helpers.bash) and source them on
+  # container start (into ~/.bashrc), mirroring the default h2agent chart. Set
+  # to "" to disable. The functions come from native-helpers.bash, bundled by
+  # ct/test.sh from the h2agent tools; if absent, only the port variables and
+  # convenience settings are provided.
+  utilsMountPath: /opt/utils
+
+service:
+  type: ClusterIP
+
+resources: {}

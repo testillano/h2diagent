@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.test.name }}
+  labels:
+    {{- include "ct-h2diagent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.test.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ct-h2diagent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ct-h2diagent.selectorLabels" . | nindent 8 }}
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      initContainers:
+        - name: {{ .Values.test.name }}-init
+          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - >-
+              until nslookup {{ .Values.server.nameOverride }}.{{ .Release.Namespace }}.svc.cluster.local ; do echo "waiting server DNS"; sleep 2; done &&
+              until nslookup {{ .Values.client.nameOverride }}.{{ .Release.Namespace }}.svc.cluster.local ; do echo "waiting client DNS"; sleep 2; done &&
+              until nc -w 1 -z {{ .Values.server.nameOverride }} {{ .Values.server.h2agent.adminPort }} ; do echo "waiting server h2agent"; sleep 2; done &&
+              until nc -w 1 -z {{ .Values.client.nameOverride }} {{ .Values.client.h2agent.adminPort }} ; do echo "waiting client h2agent"; sleep 2; done &&
+              until nc -w 1 -z {{ .Values.server.nameOverride }} {{ .Values.server.diameter.serverPort }} ; do echo "waiting server diameter"; sleep 2; done
+      containers:
+        - name: test
+          image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.test.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.test.resources | nindent 12 }}
+          env:
+            # Peer endpoints consumed by conftest.py (Service DNS names).
+            - name: SERVER_HOST
+              value: {{ .Values.server.nameOverride | quote }}
+            - name: SERVER_ADMIN_PORT
+              value: {{ .Values.server.h2agent.adminPort | quote }}
+            - name: SERVER_TRAFFIC_PORT
+              value: {{ .Values.server.h2agent.trafficPort | quote }}
+            - name: CLIENT_HOST
+              value: {{ .Values.client.nameOverride | quote }}
+            - name: CLIENT_ADMIN_PORT
+              value: {{ .Values.client.h2agent.adminPort | quote }}
+            - name: CLIENT_TRAFFIC_PORT
+              value: {{ .Values.client.h2agent.trafficPort | quote }}

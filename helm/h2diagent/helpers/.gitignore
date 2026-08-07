@@ -1,0 +1,4 @@
+# The h2agent helper library (native-helpers.bash) is copied here from the
+# h2agent tools by ct/test.sh. Keep the directory in git but ignore the payload.
+native-helpers.bash
+!.gitignore

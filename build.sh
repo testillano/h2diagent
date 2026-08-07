@@ -22,12 +22,13 @@ image_tag__dflt=latest
 usage() {
   cat << EOF
 
-  Usage: $0 [--builder|--ut|--image]
+  Usage: $0 [--builder|--ut|--image|--ct]
 
-         (no args):   builds everything (--image).
+         (no args):   builds everything (--image): runtime + CT images.
          --builder:   builds deps stage only (builder image).
          --ut:        builds unit-test image.
-         --image:     builds runtime image (production).
+         --image:     builds runtime image (production) and the CT image.
+         --ct:        builds the component-test (ct-h2diagent) image only.
 
          Environment variables (override any Dockerfile ARG):
            image_tag, make_procs, build_type, boost_ver, ert_logger_ver,
@@ -91,11 +92,22 @@ build_image() {
   echo "Built: ${registry}/h2diagent:${tag}"
 }
 
+build_ct() {
+  echo "=== Build ct-h2diagent (component-test image) ==="
+  local tag=$(resolve image_tag)
+  # Self-contained image (ubuntu + pytest venv); no Dockerfile ARGs needed.
+  docker build \
+    -t ${registry}/ct-h2diagent:${tag} \
+    ${DBUILD_XTRA_OPTS} ct
+  echo "Built: ${registry}/ct-h2diagent:${tag}"
+}
+
 case "$1" in
   --builder) build_builder ;;
   --ut)      build_ut ;;
-  --image)   build_image ;;
+  --image)   build_image; build_ct ;;
+  --ct)      build_ct ;;
   -h|--help) usage; exit 0 ;;
-  "")        build_image ;;
+  "")        build_image; build_ct ;;
   *)         echo "Unknown: $1"; usage; exit 1 ;;
 esac

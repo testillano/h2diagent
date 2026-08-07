@@ -1,4 +1,5 @@
 build/
+*.log
 *.swp
 .vscode/
 cmake-build-*/

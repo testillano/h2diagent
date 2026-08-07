@@ -22,6 +22,7 @@ Copyright (c) 2024 Eduardo Ramos
 
 #include <atomic>
 #include <boost/asio.hpp>
+#include <chrono>
 #include <cstdint>
 #include <ert/diametercodec/codec/Message.hpp>
 #include <ert/diametercodec/stack/Dictionary.hpp>
@@ -104,9 +105,15 @@ class Gateway {
                                   const nghttp2::asio_http2::header_map& headers,
                                   std::function<void(int, const std::string&)> respond);
 
+    // (Re)connect the HTTP/2 client to h2agent. Creates a fresh nghttp2 session.
+    // Must run on the h2clientIo_ thread (the only thread that mutates the session).
+    void connectH2Client();
+    // Schedule a backoff reconnection of the HTTP/2 client to h2agent.
+    // Must run on the h2clientIo_ thread.
+    void scheduleH2ClientReconnect();
+
     // Helper: map application-id to interface name
-    std::string getInterfaceName(uint32_t appId) const;
-    // Helper: map command-code to command abbreviation
+    std::string getInterfaceName(uint32_t appId) const;  // Helper: map command-code to command abbreviation
     std::string getCommandName(uint32_t commandCode, bool isRequest) const;
     // Helper: select dictionary by application-id
     const diametercodec::stack::Dictionary& getDictionary(uint32_t appId) const;
@@ -141,6 +148,17 @@ class Gateway {
     std::thread h2clientThread_;
     std::unique_ptr<nghttp2::asio_http2::client::session> h2clientSession_;
     std::atomic<bool> h2clientConnected_{false};
+
+    // HTTP/2 client reconnection to h2agent. The nghttp2 client session does not
+    // reconnect on its own, so on connection loss/failure we recreate it with an
+    // exponential backoff. Timer and flags below are only touched on the
+    // h2clientIo_ thread (except h2clientStopping_, which is atomic).
+    std::unique_ptr<boost::asio::steady_timer> h2clientReconnectTimer_;
+    std::chrono::milliseconds h2clientReconnectBackoff_{1000};
+    static constexpr std::chrono::milliseconds h2clientReconnectInitial_{1000};
+    static constexpr std::chrono::milliseconds h2clientReconnectMax_{10000};
+    bool h2clientReconnectPending_{false};
+    std::atomic<bool> h2clientStopping_{false};
 
     // HTTP/2 server (for outbound triggers)
     std::unique_ptr<nghttp2::asio_http2::server::http2> h2server_;

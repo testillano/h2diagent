@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "h2diagent.name" . }}
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/path: metrics
+    prometheus.io/port: {{ .Values.h2agent.prometheusPort | quote }}
+    prometheus.io/scrape: {{ .Values.metrics.enabled | quote }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    # --- h2agent (mock brain) ---
+    - port: {{ .Values.h2agent.adminPort }}
+      targetPort: {{ .Values.h2agent.adminPort }}
+      protocol: TCP
+      name: http2-admin
+    - port: {{ .Values.h2agent.trafficPort }}
+      targetPort: {{ .Values.h2agent.trafficPort }}
+      protocol: TCP
+      name: http2-traffic
+    - port: {{ .Values.h2agent.prometheusPort }}
+      targetPort: {{ .Values.h2agent.prometheusPort }}
+      protocol: TCP
+      name: http-metrics
+    # --- h2diagent (gateway) ---
+    {{- if include "h2diagent.hasServer" . }}
+    - port: {{ .Values.diameter.serverPort }}
+      targetPort: {{ .Values.diameter.serverPort }}
+      protocol: TCP
+      name: diameter
+    {{- end }}
+    {{- if .Values.metrics.enabled }}
+    - port: {{ .Values.prometheusPort }}
+      targetPort: {{ .Values.prometheusPort }}
+      protocol: TCP
+      name: gw-metrics
+    {{- end }}
+  selector:
+    {{- include "h2diagent.selectorLabels" . | nindent 4 }}
+  publishNotReadyAddresses: true

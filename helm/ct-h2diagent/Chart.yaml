@@ -1,0 +1,17 @@
+apiVersion: v2
+appVersion: "1.0"
+description: Component test chart for h2diagent (server + client Diameter peers)
+name: ct-h2diagent
+version: 1.0.0
+
+# Two Diameter peers, each an h2diagent + h2agent sidecar pod.
+# The client dials the server's Diameter port (by Service DNS name "server").
+dependencies:
+  - name: h2diagent
+    version: 1.0.0
+    repository: file://../h2diagent
+    alias: server
+  - name: h2diagent
+    version: 1.0.0
+    repository: file://../h2diagent
+    alias: client

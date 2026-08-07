@@ -1,0 +1,38 @@
+{{/*
+h2diagent (gateway) troubleshooting helpers for the h2diagent container.
+h2diagent has no admin REST API, so these are metric shortcuts over the
+Prometheus endpoint. Provides:
+  - native-helpers.bash : this repo's tools/helpers.bash (symlinked)
+  - helpers.bash        : thin wrapper that sets this peer's metrics port and
+                          sources native-helpers.bash.
+Mounted at .Values.utilsMountPath on the h2diagent container and sourced into
+~/.bashrc via its postStart hook.
+*/}}
+{{- if .Values.utilsMountPath }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "h2diagent.name" . }}-h2diagent-helpers
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+data:
+{{ (.Files.Glob "native-helpers.bash").AsConfig | indent 2 }}
+  helpers.bash: |
+    #!/bin/echo "source me!"
+
+    #######################
+    # VARIABLES FROM HELM #
+    #######################
+    PNAME="{{ .Values.nameOverride | default .Values.productName }}"
+    METRICS_PORT="{{ .Values.prometheusPort }}"
+    SERVER_ADDR="localhost"
+    CURL=${CURL:-"curl -s"}
+
+    #############
+    # EXECUTION #
+    #############
+
+    # Source native helpers (this repo's tools/helpers.bash):
+    [ -f "{{ .Values.utilsMountPath }}/native-helpers.bash" ] && \
+      source "{{ .Values.utilsMountPath }}/native-helpers.bash"
+{{- end }}

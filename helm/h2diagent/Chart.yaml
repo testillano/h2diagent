@@ -1,0 +1,5 @@
+apiVersion: v2
+appVersion: "1.0"
+description: h2diagent (Diameter <-> HTTP/2 gateway) with h2agent sidecar
+name: h2diagent
+version: 1.0.0

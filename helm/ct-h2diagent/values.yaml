@@ -1,0 +1,58 @@
+# Component test wrapper for h2diagent.
+#
+# Deploys two Diameter peers (each = h2diagent + h2agent sidecar) plus a test
+# pod running pytest. The client peer dials the server peer's Diameter port
+# using the Kubernetes Service DNS name "server".
+
+# Pytest runner pod.
+test:
+  name: test
+  replicaCount: 1
+  image:
+    repository: ghcr.io/testillano/ct-h2diagent
+    pullPolicy: IfNotPresent
+    tag: latest
+  resources: {}
+
+# Init container waits until both peers (h2agent admin + server Diameter) are up.
+initContainer:
+  image:
+    repository: busybox
+    pullPolicy: IfNotPresent
+    tag: latest
+
+# ---------------------------------------------------------------------------
+# server peer (Diameter listener / PCRF-like). Values feed the h2diagent
+# subchart (alias "server") and are also read by this chart's test deployment.
+# ---------------------------------------------------------------------------
+server:
+  nameOverride: server
+  role: server
+  originHost: server.example.com
+  originRealm: example.com
+  stacks:
+    - gx
+  diameter:
+    serverPort: 3868
+  h2agent:
+    adminPort: 8074
+    trafficPort: 8000
+
+# ---------------------------------------------------------------------------
+# client peer (Diameter dialer / PGW-like). Dials "server:3868".
+# ---------------------------------------------------------------------------
+client:
+  nameOverride: client
+  role: client
+  originHost: client.example.com
+  originRealm: example.com
+  stacks:
+    - gx
+  diameter:
+    serverPort: 0
+    peerHost: server
+    peerPort: 3868
+  http2ServerPort: 8081
+  h2agent:
+    adminPort: 8074
+    trafficPort: 8000
