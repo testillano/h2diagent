@@ -16,6 +16,8 @@ spec:
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
+      # Wait until both peers are ready before the test container starts, so
+      # 'helm install --wait' gates on peer readiness at deploy time.
       initContainers:
         - name: {{ .Values.test.name }}-init
           image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag | default .Chart.AppVersion }}"

@@ -16,7 +16,10 @@ metadata:
   labels:
     {{- include "h2diagent.labels" . | nindent 4 }}
 data:
-{{ (.Files.Glob "helpers/native-helpers.bash").AsConfig | indent 2 }}
+{{- range $path, $bytes := .Files.Glob "helpers/native-helpers.bash" }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
   helpers.bash: |
     #!/bin/echo "source me!"
 
