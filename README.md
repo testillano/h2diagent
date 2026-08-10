@@ -433,6 +433,42 @@ limitation -- the underlying `boost::asio` transport used by `diametercomm` has
 no DTLS support, and DTLS/SCTP requires an OpenSSL SCTP BIO outside that
 abstraction. Use `tcp` transport to secure the Diameter side.
 
+#### Can a socat/stunnel sidecar add DTLS/SCTP? No
+
+A TLS/DTLS proxy sidecar does **not** close this gap:
+
+- **socat** (checked with 1.7.4) exposes `openssl-dtls-*` (DTLS, but over
+  **UDP** only) and `sctp-*` (plain SCTP, with **no** crypto). There is **no**
+  address type that combines DTLS with SCTP, so socat cannot speak RFC 6083
+  DTLS/SCTP.
+- **stunnel** secures TCP only (no SCTP, no DTLS/SCTP).
+
+Tunnelling the Diameter/SCTP bytes through a socat DTLS/**UDP** tunnel would
+change the transport (UDP, not SCTP) and would **not interoperate** with a peer
+expecting DTLS/SCTP -- a lab curiosity, not a real solution.
+
+Practical ways to secure the Diameter hop:
+
+1. **TCP + native TLS** (recommended) -- the options documented above.
+2. **Secure SCTP at the network layer with IPsec** (transport/tunnel mode),
+   which is transport-agnostic and needs no application-level DTLS.
+
+For reference, securing a *TCP* Diameter hop with an external socat terminator
+(equivalent to the built-in TLS; useful only if you must terminate TLS outside
+the process, e.g. to front a plaintext peer) looks like:
+
+```bash
+# Server side: expose TLS on :3869 in front of a plaintext Diameter TCP :3868
+socat OPENSSL-LISTEN:3869,reuseaddr,fork,cert=server.pem,cafile=ca.crt,verify=0 \
+      TCP:localhost:3868
+
+# Client side: accept plaintext on :3868, dial the remote TLS terminator
+socat TCP-LISTEN:3868,reuseaddr,fork \
+      OPENSSL:sut:3869,cafile=ca.crt,verify=1
+```
+
+There is deliberately no such one-liner for SCTP -- use IPsec or TCP+TLS instead.
+
 ## Peers (quick Diameter endpoint setup)
 
 The `create-peer.sh` tool generates self-contained Diameter peers without needing to understand the internal architecture. Each peer is a directory under `peers/` with everything needed to run.
@@ -540,15 +576,62 @@ Gauges provided by diametercomm library:
 ```
 Counters provided by diametercomm library:
 
-   diameter_client_requests_sent_counter [source] [command_code]
-   diameter_client_answers_received_counter [source] [command_code] [result_code]
-   diameter_client_requests_timedout_counter [source] [command_code]
-   diameter_client_requests_unsent_counter [source] [command_code]
+   diameter_client_requests_sent_counter [source] [command_code] [application_id]
+   diameter_client_answers_received_counter [source] [command_code] [application_id] [result_code]
+   diameter_client_requests_timedout_counter [source] [command_code] [application_id]
+   diameter_client_requests_unsent_counter [source] [command_code] [application_id]
 
 Gauges provided by diametercomm library:
 
    diameter_client_peer_state_gauge [source] (1=open, 0=closed)
+
+Histograms provided by diametercomm library:
+
+   diameter_client_response_delay_seconds [source] [command_code] [application_id]
+      Round-trip latency (seconds) from request sent to correlated answer.
+      Exposes _sum / _count / _bucket (used by traffic_summary for averages).
 ```
+
+#### Metric labels: `application_id` and optional per-AVP labels
+
+Every Diameter **client** metric always carries `source`, `command_code` and
+**`application_id`** (the Application-Id read from the message header; together
+with `command_code` it identifies the interface + command). Answers also carry
+`result_code`.
+
+You can attach **extra labels** whose value is taken, per outbound request, from
+chosen AVPs (by name). The option is **repeatable**:
+
+```bash
+h2diagent --metrics-additional-label CC-Request-Type \
+          --metrics-additional-label Termination-Cause ...
+```
+
+Each AVP name is sanitized into a Prometheus label key (e.g. `CC-Request-Type`
+-> `cc_request_type`) and attached to all client metrics; the value is read from
+the outbound request JSON and reused for the correlated answer. This lets you,
+for example, break latency down by `CC-Request-Type` (initial/update/terminate)
+without hard-coding Credit-Control semantics.
+
+##### Typical AVPs worth labelling (low cardinality)
+
+| AVP | Interface | Values | Note |
+|-----|-----------|--------|------|
+| `CC-Request-Type` | Gx/Gy/Ro | 1..4 (INITIAL/UPDATE/TERMINATION/EVENT) | the canonical breakdown |
+| `Termination-Cause` | base (STR) | enumerated (~8) | session teardown reason |
+| `Disconnect-Cause` | base (DPR) | 0/1/2 | peer disconnect reason |
+| `Subscription-Id-Type` | Gx/Gy | 0..4 (E164/IMSI/SIP/NAI/...) | the **type**, not the data |
+| `Auth-Application-Id` | generic | few | which application/interface |
+
+> **The value is read from the request.** AVPs that only appear in the *answer*
+> (e.g. an installed `QoS-Class-Identifier`) are not available with this
+> mechanism.
+
+> **Cardinality warning.** Prometheus degrades with high-cardinality labels. Use
+> only **low-cardinality** (enumerated/type-like) AVPs. Do **NOT** use unbounded
+> AVPs such as `Session-Id`, `Subscription-Id-Data` (IMSI/MSISDN),
+> `Framed-IP-Address`, `CC-Request-Number` or `User-Name`: each distinct value
+> creates a new time series and can overwhelm the TSDB.
 
 #### HTTP/2 server (outbound triggers from h2agent)
 
@@ -572,7 +655,7 @@ Counters provided by h2diagent:
 
 ```bash
 diameter_server_requests_received_counter{source="h2diagent",command_code="272"} 15
-diameter_client_answers_received_counter{source="h2diagent",command_code="272",result_code="2001"} 15
+diameter_client_answers_received_counter{source="h2diagent",command_code="272",application_id="16777238",result_code="2001"} 15
 h2diagent_http2_server_requests_received_counter{source="h2diagent",method="POST"} 15
 h2diagent_http2_client_responses_received_counter{source="h2diagent",method="POST",status_code="200"} 15
 diameter_server_active_peers_gauge{source="h2diagent"} 1
@@ -591,7 +674,7 @@ for `kubectl exec`):
 source tools/helpers.bash   # native (targets localhost:8085 by default)
 
 metrics [port]           # raw Prometheus metrics scraped from h2diagent
-traffic_summary [port]   # Diameter answers by result-code, pass(2001)/fail
+traffic_summary [port]   # Diameter client result-codes, PASS(2001) and latency
 ```
 
 Each function takes an optional `[port]` (overriding `METRICS_PORT`) and `-h`
@@ -600,7 +683,7 @@ for a one-line description. Override targets via `METRICS_PORT`, `SERVER_ADDR`,
 
 ### Grafana dashboard
 
-A Grafana dashboard JSON is provided at `tools/grafana/grafana/provisioning/dashboards/h2diagent.json`.
+A Grafana dashboard JSON is provided at `tools/grafana/h2diagent-dashboard.json`.
 Import it into your Grafana instance and configure the Prometheus datasource. See `tools/grafana/README.md` for details.
 
 ## Related projects

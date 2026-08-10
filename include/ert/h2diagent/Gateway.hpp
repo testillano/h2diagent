@@ -85,6 +85,11 @@ struct GatewayConfig {
     uint16_t adminPort{8074};
     uint16_t prometheusPort{8085};
     bool metricsEnabled{true};
+    // Optional: attach extra Prometheus label(s) to the Diameter CLIENT metrics,
+    // each valued (per outbound request) from an AVP by name. Repeatable. Keep
+    // them LOW-cardinality (e.g. CC-Request-Type). Empty = none. (The
+    // application_id label is always present, taken from the message header.)
+    std::vector<std::string> metricsAdditionalLabelAvps;
     int workers{0};  // 0 = nproc
 };
 

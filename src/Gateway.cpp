@@ -10,6 +10,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <algorithm>
 #include <atomic>
 #include <boost/asio/post.hpp>
+#include <cctype>
 #include <chrono>
 #include <ert/diametercodec/codec/Avp.hpp>
 #include <ert/diametercodec/codec/Message.hpp>
@@ -23,6 +24,19 @@ namespace ert {
 namespace h2diagent {
 
 namespace {
+
+// Sanitize an AVP name into a valid Prometheus label key (e.g.
+// "CC-Request-Type" -> "cc_request_type"): lowercase alphanumerics, any other
+// character becomes '_', and a leading digit is prefixed with '_'.
+std::string sanitizeLabelKey(const std::string& name) {
+    std::string out;
+    out.reserve(name.size());
+    for (unsigned char c : name) {
+        out += std::isalnum(c) ? static_cast<char>(std::tolower(c)) : '_';
+    }
+    if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0]))) out.insert(out.begin(), '_');
+    return out;
+}
 
 // nghttp2-asio API portability: some versions expose response::io_service(),
 // newer ones response::io_context() (identical type since Boost 1.66, where
@@ -822,6 +836,29 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
             ert::tracing::Logger::asString("Sending Diameter request (%zu bytes) to peer", encoded.size()),
             ERT_FILE_LOCATION));
 
+        // Optional additional metric labels: for each configured AVP name, read
+        // its value from the outbound JSON (stringified) under a sanitized
+        // Prometheus key. diametercomm attaches them to the client metrics and
+        // reuses the same values for the correlated answer. (application_id is
+        // added by diametercomm itself from the message header.)
+        ert::metrics::labels_t additionalLabels;
+        for (const auto& avpName : config_.metricsAdditionalLabelAvps) {
+            auto itAvp = reqJson.find(avpName);
+            if (itAvp == reqJson.end() || itAvp->is_null()) continue;
+            std::string value;
+            if (itAvp->is_string())
+                value = itAvp->get<std::string>();
+            else if (itAvp->is_number_integer())
+                value = std::to_string(itAvp->get<long long>());
+            else if (itAvp->is_number_unsigned())
+                value = std::to_string(itAvp->get<unsigned long long>());
+            else if (itAvp->is_number_float())
+                value = std::to_string(itAvp->get<double>());
+            else
+                value = itAvp->dump();
+            additionalLabels[sanitizeLabelKey(avpName)] = value;
+        }
+
         // 3. Send via Diameter client with response callback
         diameterClient_->send(
             std::move(encoded),
@@ -847,7 +884,7 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
                     respond(502, R"({"error":"Failed to decode Diameter answer"})");
                 }
             },
-            config_.diameterTimeoutMs);
+            config_.diameterTimeoutMs, additionalLabels);
 
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(

@@ -795,6 +795,116 @@
             ],
             "title": "Timeout Rate",
             "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "Average Diameter client round-trip latency (request sent -> correlated answer), by application-id and command-code, from the response_delay_seconds histogram (rate(_sum)/rate(_count)).",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] },
+                    "unit": "s"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 51 },
+            "id": 44,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "sum(rate(diameter_client_response_delay_seconds_sum{source=~\"$source\"}[$rate_interval])) by (application_id, command_code) / sum(rate(diameter_client_response_delay_seconds_count{source=~\"$source\"}[$rate_interval])) by (application_id, command_code)",
+                    "legendFormat": "avg app={{application_id}} cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Diameter Client Latency (avg)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "description": "95th percentile Diameter client round-trip latency, by application-id and command-code, computed from the response_delay_seconds histogram buckets.",
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": { "type": "linear" },
+                        "showPoints": "auto",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": { "group": "A", "mode": "none" },
+                        "thresholdsStyle": { "mode": "off" }
+                    },
+                    "mappings": [],
+                    "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] },
+                    "unit": "s"
+                },
+                "overrides": []
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 51 },
+            "id": 45,
+            "options": {
+                "legend": { "calcs": ["min", "mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+            },
+            "pluginVersion": "12.4.0",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "${datasource}" },
+                    "editorMode": "code",
+                    "expr": "histogram_quantile(0.95, sum(rate(diameter_client_response_delay_seconds_bucket{source=~\"$source\"}[$rate_interval])) by (le, application_id, command_code))",
+                    "legendFormat": "p95 app={{application_id}} cmd={{command_code}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Diameter Client Latency (p95)",
+            "type": "timeseries"
         }
     ],
     "preload": false,

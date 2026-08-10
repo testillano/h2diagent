@@ -86,6 +86,11 @@ void usage(const char* name) {
         //<< "  --admin-port <port>             Admin API port (default: 8074) [NOT YET IMPLEMENTED]\n"
         << "  --prometheus-port <port>        Prometheus scrape port (default: 8085)\n"
         << "  --disable-metrics               Disable prometheus metrics\n\n"
+        << "  --metrics-additional-label <AVP>  Add an extra label to the Diameter CLIENT metrics,\n"
+        << "                                  valued from this AVP (by name) of each outbound request\n"
+        << "                                  (e.g. CC-Request-Type). Repeatable for several labels.\n"
+        << "                                  Use LOW-cardinality AVPs only. (application_id is always\n"
+        << "                                  present, taken from the message header.)\n\n"
         << "  [-V|--version]                  Program version\n"
         << "  [-h|--help]                     This help\n"
         << std::endl;
@@ -143,6 +148,7 @@ int main(int argc, char* argv[]) {
         //{"admin-port",          required_argument, nullptr, 0}, // NOT YET IMPLEMENTED
         {"prometheus-port", required_argument, nullptr, 0},
         {"disable-metrics", no_argument, nullptr, 0},
+        {"metrics-additional-label", required_argument, nullptr, 0},
         {"version", no_argument, nullptr, 'V'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
@@ -216,6 +222,8 @@ int main(int argc, char* argv[]) {
                     config.prometheusPort = std::stoi(optarg);
                 else if (name == "disable-metrics")
                     config.metricsEnabled = false;
+                else if (name == "metrics-additional-label")
+                    config.metricsAdditionalLabelAvps.push_back(optarg);
                 break;
             }
             case 'l':
