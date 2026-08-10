@@ -674,12 +674,27 @@ for `kubectl exec`):
 source tools/helpers.bash   # native (targets localhost:8085 by default)
 
 metrics [port]           # raw Prometheus metrics scraped from h2diagent
-traffic_summary [port]   # Diameter client result-codes, PASS(2001) and latency
+traffic_summary          # Diameter client summary (result-codes, PASS(2001),
+                         # latency) with h2agent-like snapshot/delta support
 ```
 
-Each function takes an optional `[port]` (overriding `METRICS_PORT`) and `-h`
-for a one-line description. Override targets via `METRICS_PORT`, `SERVER_ADDR`,
-`SCHEME`, `CURL`.
+`traffic_summary` mirrors h2agent's snapshot/delta command line. Diameter
+counters only grow, so it works on **deltas** between two points in time (a
+`zeroed` baseline yields absolute totals):
+
+```bash
+traffic_summary --now              # live view since start (zeroed -> now)
+traffic_summary --save before      # mark a point
+# ... run traffic ...
+traffic_summary before --now       # delta from the mark to now
+traffic_summary --delta            # incremental delta since the previous call
+traffic_summary --show / --clean   # list / remove saved snapshots
+traffic_summary before after --json   # machine-readable delta
+```
+
+`metrics` takes an optional `[port]`; `traffic_summary` takes `--port <p>`
+(both default to `METRICS_PORT`). Use `-h` for full usage. Override targets via
+`METRICS_PORT`, `SERVER_ADDR`, `SCHEME`, `CURL`.
 
 ### Grafana dashboard
 
