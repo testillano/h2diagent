@@ -64,6 +64,16 @@ void usage(const char* name) {
         << "                                  sctp is single-homing (default: tcp)\n"
         << "  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;\n"
         << "                                  sctp is single-homing (default: tcp)\n\n"
+        << "Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):\n"
+        << "  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.\n"
+        << "  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS.\n"
+        << "                                  Both key and crt must be provided to secure the server.\n"
+        << "  --diameter-server-key-password <pass>  Password for the server key (optional).\n"
+        << "  --secure-diameter-client        Enable TLS on the outbound Diameter client.\n"
+        << "  --diameter-client-ca <path>     CA (PEM) to verify the remote server cert (optional).\n"
+        << "  --diameter-client-crt <path>    Client certificate (PEM) for mutual TLS (optional).\n"
+        << "  --diameter-client-key <path>    Client private key (PEM) for mutual TLS (optional).\n"
+        << "  --diameter-client-key-password <pass>  Password for the client key (optional).\n\n"
         << "HTTP/2 (towards h2agent):\n"
         << "  --h2agent-host <host>           h2agent traffic server host (default: localhost)\n"
         << "  --h2agent-port <port>           h2agent traffic server port (default: 8000)\n\n"
@@ -116,6 +126,14 @@ int main(int argc, char* argv[]) {
         {"diameter-timeout-ms", required_argument, nullptr, 0},
         {"diameter-server-transport", required_argument, nullptr, 0},
         {"diameter-client-transport", required_argument, nullptr, 0},
+        {"diameter-server-key", required_argument, nullptr, 0},
+        {"diameter-server-crt", required_argument, nullptr, 0},
+        {"diameter-server-key-password", required_argument, nullptr, 0},
+        {"secure-diameter-client", no_argument, nullptr, 0},
+        {"diameter-client-ca", required_argument, nullptr, 0},
+        {"diameter-client-crt", required_argument, nullptr, 0},
+        {"diameter-client-key", required_argument, nullptr, 0},
+        {"diameter-client-key-password", required_argument, nullptr, 0},
         {"h2agent-host", required_argument, nullptr, 0},
         {"h2agent-port", required_argument, nullptr, 0},
         {"http2-server-port", required_argument, nullptr, 0},
@@ -169,7 +187,23 @@ int main(int argc, char* argv[]) {
                         return 1;
                     }
                     config.diameterClientTransport = toTransport(norm);
-                } else if (name == "h2agent-host")
+                } else if (name == "diameter-server-key")
+                    config.diameterServerKeyFile = optarg;
+                else if (name == "diameter-server-crt")
+                    config.diameterServerCrtFile = optarg;
+                else if (name == "diameter-server-key-password")
+                    config.diameterServerKeyPassword = optarg;
+                else if (name == "secure-diameter-client")
+                    config.secureDiameterClient = true;
+                else if (name == "diameter-client-ca")
+                    config.diameterClientCaFile = optarg;
+                else if (name == "diameter-client-crt")
+                    config.diameterClientCrtFile = optarg;
+                else if (name == "diameter-client-key")
+                    config.diameterClientKeyFile = optarg;
+                else if (name == "diameter-client-key-password")
+                    config.diameterClientKeyPassword = optarg;
+                else if (name == "h2agent-host")
                     config.h2agentHost = optarg;
                 else if (name == "h2agent-port")
                     config.h2agentPort = std::stoi(optarg);

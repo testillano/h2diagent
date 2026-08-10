@@ -47,6 +47,7 @@ Options:
   --log-level <level>     h2diagent log level: Debug|Informational|Warning|Error (default: Warning)
   --extra-h2agent-args <args>     Extra arguments for h2agent (e.g., "--discard-data")
   --extra-h2diagent-args <args>   Extra arguments for h2diagent
+  --ssl-dir <dir>                 Mount this dir of PEM certs into the h2diagent container at /ssl (for Diameter TLS)
 
 Available stacks: ${AVAILABLE_STACKS:-none}
 
@@ -78,7 +79,7 @@ ask() {
 PEER_NAME="" STACKS="" ROLE=""
 SERVER_PORT="" PEER_HOST="" PEER_PORT=""
 ADMIN_PORT="" ORIGIN_HOST="" ORIGIN_REALM=""
-OUTPUT_DIR="" EXTRA_H2AGENT_ARGS="" EXTRA_H2DIAGENT_ARGS=""
+OUTPUT_DIR="" EXTRA_H2AGENT_ARGS="" EXTRA_H2DIAGENT_ARGS="" SSL_DIR=""
 LOG_LEVEL="${LOG_LEVEL:-Warning}"
 
 while [[ $# -gt 0 ]]; do
@@ -96,6 +97,7 @@ while [[ $# -gt 0 ]]; do
         --origin-realm) ORIGIN_REALM="$2"; shift 2 ;;
         --extra-h2agent-args) EXTRA_H2AGENT_ARGS="$2"; shift 2 ;;
         --extra-h2diagent-args) EXTRA_H2DIAGENT_ARGS="$2"; shift 2 ;;
+        --ssl-dir) SSL_DIR="$2"; shift 2 ;;
         --log-level) LOG_LEVEL="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; usage; exit 1 ;;
     esac
@@ -228,6 +230,17 @@ for stack in ${STACKS}; do
 "
 done
 
+# Optional TLS certificates: mount a PEM directory into the h2diagent container
+# at /ssl (referenced by --diameter-server-crt/key, --diameter-client-ca, etc.).
+SSL_VOLUME=""
+if [ -n "${SSL_DIR}" ]; then
+    mkdir -p "${PEER_DIR}/ssl"
+    cp "${SSL_DIR}"/ca.crt "${SSL_DIR}"/server.crt "${SSL_DIR}"/server.key \
+       "${SSL_DIR}"/client.crt "${SSL_DIR}"/client.key "${PEER_DIR}/ssl/" 2>/dev/null || true
+    SSL_VOLUME="      - ./ssl:/ssl:ro
+"
+fi
+
 # H2agent ports derived from admin port (avoids collisions between peers)
 H2AGENT_TRAFFIC_PORT=$((ADMIN_PORT + 1000))
 H2AGENT_PROM_PORT=$((ADMIN_PORT + 2000))
@@ -244,7 +257,7 @@ services:
     container_name: ${PEER_NAME}-h2diagent
     network_mode: host
     volumes:
-${DICT_VOLUMES}    command:
+${DICT_VOLUMES}${SSL_VOLUME}    command:
       - "--diameter-port"
       - "${SERVER_PORT}"
 $([ -n "${PEER_HOST}" ] && echo "      - \"--diameter-peer-host\"
@@ -293,6 +306,10 @@ PEER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "${PEER_DIR}/config.env"
 
 echo "Starting peer: ${PEER_NAME} (${ROLE})"
+# Force-remove any stale containers of the same name first. With host
+# networking, a leftover from a previous run would keep port 3868 and could
+# serve an old/mismatched certificate (confusing TLS "signature failure").
+docker rm -f "${PEER_NAME}-h2diagent" "${PEER_NAME}-h2agent" >/dev/null 2>&1 || true
 cd "${PEER_DIR}" && docker-compose up -d
 
 # Wait for h2agent readiness

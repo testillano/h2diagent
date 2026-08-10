@@ -216,6 +216,15 @@ void Gateway::start() {
     }
 
     if (config_.diameterPort > 0) {
+        // TLS/TCP for the inbound Diameter server: enabled when key+crt provided
+        // (mirrors h2agent). Server-auth only. Ignored for SCTP transport.
+        diametercomm::TlsConfig serverTls;
+        serverTls.enabled = (!config_.diameterServerKeyFile.empty() && !config_.diameterServerCrtFile.empty());
+        serverTls.certFile = config_.diameterServerCrtFile;
+        serverTls.keyFile = config_.diameterServerKeyFile;
+        serverTls.keyPassword = config_.diameterServerKeyPassword;
+        peerConfig.tls = serverTls;
+
         diameterServer_ =
             std::make_unique<diametercomm::DiameterServer>(io_, peerConfig, config_.diameterServerTransport);
         diameterServer_->enableMetrics(metrics_, config_.productName);
@@ -226,7 +235,10 @@ void Gateway::start() {
         diameterServer_->listen("0.0.0.0", config_.diameterPort);
 
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("Diameter server listening on port %d", config_.diameterPort),
+            ert::tracing::Logger::asString(
+                "Diameter server listening on port %d [%s]", config_.diameterPort,
+                (serverTls.enabled && config_.diameterServerTransport == diametercomm::Transport::TCP) ? "TLS"
+                                                                                                       : "plain"),
             ERT_FILE_LOCATION));
     } else {
         LOGWARNING(ert::tracing::Logger::warning("Diameter server disabled (port 0)", ERT_FILE_LOCATION));
@@ -234,6 +246,18 @@ void Gateway::start() {
 
     // --- Diameter Client (outbound to Server) ---
     if (!config_.diameterPeerHost.empty()) {
+        // TLS/TCP for the outbound Diameter client: enabled by the secure flag
+        // (mirrors h2agent client "secure"). Optional CA verifies the server;
+        // optional client crt/key enable mTLS. Ignored for SCTP transport.
+        diametercomm::TlsConfig clientTls;
+        clientTls.enabled = config_.secureDiameterClient;
+        clientTls.caFile = config_.diameterClientCaFile;
+        clientTls.verifyPeer = !config_.diameterClientCaFile.empty();
+        clientTls.certFile = config_.diameterClientCrtFile;
+        clientTls.keyFile = config_.diameterClientKeyFile;
+        clientTls.keyPassword = config_.diameterClientKeyPassword;
+        peerConfig.tls = clientTls;
+
         diameterClient_ =
             std::make_unique<diametercomm::DiameterClient>(io_, peerConfig, config_.diameterClientTransport);
         diameterClient_->enableMetrics(metrics_, config_.productName);
@@ -251,8 +275,10 @@ void Gateway::start() {
         diameterClient_->connect(config_.diameterPeerHost, config_.diameterPeerPort);
 
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("Diameter client connecting to %s:%d", config_.diameterPeerHost.c_str(),
-                                           config_.diameterPeerPort),
+            ert::tracing::Logger::asString(
+                "Diameter client connecting to %s:%d [%s]", config_.diameterPeerHost.c_str(), config_.diameterPeerPort,
+                (clientTls.enabled && config_.diameterClientTransport == diametercomm::Transport::TCP) ? "TLS"
+                                                                                                       : "plain"),
             ERT_FILE_LOCATION));
     }
 

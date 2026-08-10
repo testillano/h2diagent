@@ -343,6 +343,17 @@ Diameter:
   --diameter-client-transport <tcp|sctp>  Outbound client (to peer) transport;
                                   sctp is single-homing (default: tcp)
 
+Diameter TLS (TCP only; SCTP/DTLS not supported):
+  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS
+  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS
+                                  (both key and crt required to secure the server)
+  --diameter-server-key-password <pass>  Password for the server key (optional)
+  --secure-diameter-client        Enable TLS on the outbound Diameter client
+  --diameter-client-ca <path>     CA (PEM) to verify the remote server cert (optional)
+  --diameter-client-crt <path>    Client certificate (PEM) for mutual TLS (optional)
+  --diameter-client-key <path>    Client private key (PEM) for mutual TLS (optional)
+  --diameter-client-key-password <pass>  Password for the client key (optional)
+
 HTTP/2 (towards h2agent):
   --h2agent-host <host>           h2agent traffic server host (default: localhost)
   --h2agent-port <port>           h2agent traffic server port (default: 8000)
@@ -360,6 +371,67 @@ General:
   --version                       Program version
   --help                          This help
 ```
+
+## Secure Diameter (TLS/TCP)
+
+h2diagent can secure the **Diameter** side with **TLS over TCP** (RFC 6733),
+mirroring how `h2agent` secures its HTTP/2 interfaces. The HTTP/2 interface
+towards `h2agent` is intentionally left in clear text (that hop is internal to
+the mock; secure the Diameter hop that faces the SUT).
+
+Both roles can be secured independently:
+
+- **Diameter server (inbound).** TLS is enabled when **both** a key and a
+  certificate are provided (same rule as h2agent's traffic server). The server
+  presents its certificate (server authentication):
+
+  ```bash
+  h2diagent \
+    --diameter-server-crt /ssl/server.crt \
+    --diameter-server-key /ssl/server.key \
+    --diameter-server-key-password "1111" \
+    ...
+  ```
+
+- **Diameter client (outbound).** TLS is enabled with a flag (same idea as
+  h2agent's client `"secure": true`). Optionally verify the remote server with a
+  CA, and/or present a client certificate for mutual TLS (mTLS):
+
+  ```bash
+  h2diagent \
+    --secure-diameter-client \
+    --diameter-client-ca /ssl/ca.crt \
+    [--diameter-client-crt /ssl/client.crt --diameter-client-key /ssl/client.key] \
+    ...
+  ```
+
+  Without `--diameter-client-ca` the handshake still encrypts the channel but
+  does not authenticate the peer (equivalent to h2agent's plain `secure`).
+
+The startup log shows the effective mode per role, e.g.
+`Diameter server listening on port 3868 [TLS]` /
+`Diameter client connecting to sut:3868 [plain]`.
+
+### Generating test certificates
+
+`tools/ssl/create-certs.sh` generates a throwaway CA plus CA-signed server and
+client certificates (PEM):
+
+```bash
+./tools/ssl/create-certs.sh localhost           # keys without password
+./tools/ssl/create-certs.sh localhost "1111"    # password-protected keys
+# -> ca.crt server.crt server.key client.crt client.key
+```
+
+### Gap: SCTP (DTLS/SCTP) is not supported
+
+TLS is implemented for the **TCP** transport only. Diameter over **SCTP** would
+be secured with **DTLS/SCTP** (RFC 6083), which is **not implemented**: the TLS
+options above are **silently ignored** when the corresponding role uses
+`--diameter-*-transport sctp` (the connection stays clear text). This is a known
+limitation -- the underlying `boost::asio` transport used by `diametercomm` has
+no DTLS support, and DTLS/SCTP requires an OpenSSL SCTP BIO outside that
+abstraction. Use `tcp` transport to secure the Diameter side.
 
 ## Peers (quick Diameter endpoint setup)
 

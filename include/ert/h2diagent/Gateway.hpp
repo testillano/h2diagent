@@ -57,6 +57,23 @@ struct GatewayConfig {
     diametercomm::Transport diameterServerTransport{diametercomm::Transport::TCP};
     diametercomm::Transport diameterClientTransport{diametercomm::Transport::TCP};
 
+    // Diameter TLS/TCP security (Phase 1). NOTE: SCTP is NOT secured (DTLS/SCTP
+    // out of scope -- see README "gap"): TLS options are ignored on SCTP.
+    // Server (inbound): TLS is enabled when BOTH key and crt are provided
+    // (mirrors h2agent's --traffic-server-key/--traffic-server-crt). Server-auth
+    // only (the gateway does not request a client certificate).
+    std::string diameterServerKeyFile;
+    std::string diameterServerCrtFile;
+    std::string diameterServerKeyPassword;
+    // Client (outbound): TLS is enabled by the secure flag (mirrors h2agent's
+    // client "secure"). Optional CA verifies the remote server certificate;
+    // optional client crt/key enable mutual TLS (mTLS).
+    bool secureDiameterClient{false};
+    std::string diameterClientCaFile;
+    std::string diameterClientCrtFile;
+    std::string diameterClientKeyFile;
+    std::string diameterClientKeyPassword;
+
     // HTTP/2 client (towards h2agent)
     std::string h2agentHost{"localhost"};
     uint16_t h2agentPort{8000};
