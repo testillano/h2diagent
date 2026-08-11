@@ -577,9 +577,9 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     // Post submit to the session's io_service to avoid nghttp2 re-entrancy assert
     auto h_ptr = std::make_shared<nghttp2::asio_http2::header_map>(std::move(h));
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
-    auto fullUri_copy = fullUri;
 
-    boost::asio::post(h2clientIo_, [this, peerPtr, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr, fullUri_copy]() {
+    boost::asio::post(h2clientIo_, [this, peerPtr, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr,
+                                    fullUri_copy = std::move(fullUri)]() {
         if (!h2clientSession_) {
             LOGWARNING(
                 ert::tracing::Logger::warning("HTTP/2 client session not available (reconnecting)", ERT_FILE_LOCATION));
@@ -718,11 +718,12 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                                                        {"end-to-end-id", e2e}};
                             }
 
+                            const auto& dict = getDictionary(appId);
                             diametercodec::codec::Message answerMsg =
-                                diametercodec::codec::Message::fromJson(respJson, getDictionary(appId));
+                                diametercodec::codec::Message::fromJson(respJson, dict);
 
                             // 6. Encode and send Diameter answer back to peer
-                            diametercodec::core::Buffer encoded = answerMsg.encode(getDictionary(appId));
+                            diametercodec::core::Buffer encoded = answerMsg.encode(dict);
 
                             LOGINFORMATIONAL(ert::tracing::Logger::informational(
                                 ert::tracing::Logger::asString("Sending Diameter answer (%zu bytes) hbh=0x%08x",
@@ -826,11 +827,11 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
             };
         }
 
-        diametercodec::codec::Message diameterReq =
-            diametercodec::codec::Message::fromJson(reqJson, getDictionary(appId));
+        const auto& dict = getDictionary(appId);
+        diametercodec::codec::Message diameterReq = diametercodec::codec::Message::fromJson(reqJson, dict);
 
         // 2. Encode to binary
-        diametercodec::core::Buffer encoded = diameterReq.encode(getDictionary(appId));
+        diametercodec::core::Buffer encoded = diameterReq.encode(dict);
 
         LOGINFORMATIONAL(ert::tracing::Logger::informational(
             ert::tracing::Logger::asString("Sending Diameter request (%zu bytes) to peer", encoded.size()),
@@ -856,7 +857,7 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
                 value = std::to_string(itAvp->get<double>());
             else
                 value = itAvp->dump();
-            additionalLabels[sanitizeLabelKey(avpName)] = value;
+            additionalLabels[sanitizeLabelKey(avpName)] = std::move(value);
         }
 
         // 3. Send via Diameter client with response callback
@@ -865,17 +866,18 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
             [this, respond, appId](const diametercomm::Peer::Buffer& answerMsg) {
                 // 4. Diameter answer received -> decode -> JSON -> HTTP/2 response
                 try {
+                    const auto& dict = getDictionary(appId);
                     diametercodec::codec::Message answer;
-                    answer.decode(answerMsg.data(), answerMsg.size(), getDictionary(appId));
+                    answer.decode(answerMsg.data(), answerMsg.size(), dict);
 
-                    nlohmann::json respJson = answer.toJson(getDictionary(appId));
+                    nlohmann::json respJson = answer.toJson(dict);
+                    std::string respStr = respJson.dump();
 
                     LOGINFORMATIONAL(ert::tracing::Logger::informational(
-                        ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)",
-                                                       respJson.dump().size()),
+                        ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
                         ERT_FILE_LOCATION));
 
-                    respond(200, respJson.dump());
+                    respond(200, respStr);
 
                 } catch (const std::exception& e) {
                     LOGWARNING(ert::tracing::Logger::warning(

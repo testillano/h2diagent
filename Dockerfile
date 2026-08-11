@@ -41,8 +41,8 @@ ARG testillano_nghttp2_ver=v1.3.0
 ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
-ARG ert_diametercodec_ver=v1.1.0
-ARG ert_diametercomm_ver=v1.2.1
+ARG ert_diametercodec_ver=v1.1.1
+ARG ert_diametercomm_ver=v1.2.2
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
