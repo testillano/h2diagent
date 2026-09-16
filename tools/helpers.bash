@@ -28,7 +28,11 @@ PNAME=${PNAME:-h2diagent}
 METRICS_PORT=${METRICS_PORT:-8085}
 SCHEME=${SCHEME:-http}
 SERVER_ADDR=${SERVER_ADDR:-localhost}
-CURL=${CURL:-"curl -s"}
+# NOTE: h2diagent exposes only a plain HTTP/1 Prometheus endpoint (no HTTP/2
+# admin API), so its scrapes use `curl -s` inline. We deliberately do NOT define
+# a global CURL variable here: exporting one would leak into a shell that also
+# sources the h2agent helpers (which need `curl --http2-prior-knowledge` for the
+# admin API), silently breaking their admin calls. Keep the curl inline.
 
 #############
 # FUNCTIONS #
@@ -49,7 +53,7 @@ metrics_url() {
 # metrics [port]: raw Prometheus metrics scraped from h2diagent.
 metrics() {
   [ "$1" = "-h" ] && { echo "metrics [port]: raw Prometheus metrics from h2diagent (default ${METRICS_PORT})."; return 0; }
-  ${CURL} "$(metrics_url "$1")" 2>/dev/null
+  curl -s "$(metrics_url "$1")" 2>/dev/null
 }
 
 # traffic_summary: Diameter client summary (result-codes, PASS(2001), latency)
@@ -180,7 +184,7 @@ traffic_summary() {
   for a in "$@"; do case "$a" in --now) now_mode=true ;; --json) now_json="--json" ;; *) now_args+=("$a") ;; esac; done
   if $now_mode; then
     [ ${#now_args[@]} -gt 0 ] && now_ref="${now_args[0]}"
-    local m=$(${CURL} "$(metrics_url)" 2>/dev/null)
+    local m=$(curl -s "$(metrics_url)" 2>/dev/null)
     if [ -z "$m" ]; then echo "No metrics available (is h2diagent running?)"; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
     local resolved=$(_resolve_ref "${now_ref}")
     if [ -z "$resolved" ]; then echo "Reference '${now_ref}' not found."; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
@@ -201,7 +205,7 @@ traffic_summary() {
       if [ -z "$label" ]; then echo "Usage: traffic_summary --save <label>"; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
       if [ "$label" = "zeroed" ] || [ "$label" = "last" ]; then echo "Error: '${label}' is a reserved label."; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
     fi
-    local m=$(${CURL} "$(metrics_url)" 2>/dev/null)
+    local m=$(curl -s "$(metrics_url)" 2>/dev/null)
     if [ -z "$m" ]; then echo "No metrics available (is h2diagent running?)"; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
     local ts=$(date +%s)
     echo "$m" | grep -E '_counter\{|_gauge\{|_bucket\{|_sum\{|_count\{' > "${snap_dir}/counters.${ts}"
@@ -337,7 +341,6 @@ help() {
   echo
   echo "=== Internal Functions And Variables ==="
   echo "metrics_url: $(metrics_url) (METRICS_PORT=${METRICS_PORT}; SCHEME=${SCHEME}; SERVER_ADDR=${SERVER_ADDR})"
-  echo "curl:        CURL=\"${CURL}\""
   export -f metrics_url
   echo
   echo "=== Functions ==="
