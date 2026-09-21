@@ -566,6 +566,14 @@ Counters provided by diametercomm library:
    diameter_server_answers_sent_counter [source] [command_code] [result_code]
    diameter_server_peer_connections_counter [source] [state: open/closed]
 
+   Bidirectional Diameter (RFC 6733) -- server-initiated requests sent on the
+   server leg and the correlated answers received back. When h2diagent
+   simulates a peer (e.g. a CCPC) it may PUSH a request (e.g. RAR) down a
+   connected peer and correlate the incoming answer (RAA) by hop-by-hop:
+
+   diameter_server_requests_sent_counter [source] [command_code] [application_id]
+   diameter_server_answers_received_counter [source] [command_code] [application_id] [result_code]
+
 Gauges provided by diametercomm library:
 
    diameter_server_active_peers_gauge [source]
@@ -580,6 +588,14 @@ Counters provided by diametercomm library:
    diameter_client_answers_received_counter [source] [command_code] [application_id] [result_code]
    diameter_client_requests_timedout_counter [source] [command_code] [application_id]
    diameter_client_requests_unsent_counter [source] [command_code] [application_id]
+
+   Bidirectional Diameter (RFC 6733) -- server-initiated requests received on
+   the client leg and the answers h2diagent sends back on it. After CER/CEA the
+   remote peer may push requests (e.g. RAR/DPR) on the connection h2diagent
+   opened; they are forwarded to h2agent and answered on the same leg:
+
+   diameter_client_requests_received_counter [source] [command_code] [application_id]
+   diameter_client_answers_sent_counter [source] [command_code] [application_id] [result_code]
 
 Gauges provided by diametercomm library:
 

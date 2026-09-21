@@ -245,6 +245,25 @@ traffic_summary() {
       if (match(line, re)) { s = substr(line, RSTART, RLENGTH); sub(key "=\"", "", s); sub(/"$/, "", s); return s }
       return ""
     }
+    function cmdName(cc) {
+      # Diameter command-code -> abbreviation (request form). Shown next to the
+      # numeric code in the "By label" table for readability.
+      if (cc == "257") return "CER"; if (cc == "258") return "RAR"
+      if (cc == "265") return "AAR"; if (cc == "271") return "ACR"
+      if (cc == "272") return "CCR"; if (cc == "274") return "ASR"
+      if (cc == "275") return "STR"; if (cc == "280") return "DWR"
+      if (cc == "282") return "DPR"; if (cc == "300") return "SNR"
+      return "?"
+    }
+    function cmdAnsName(cc) {
+      # Answer form (ends in A): request XxR -> answer XxA. Same command-code.
+      if (cc == "257") return "CEA"; if (cc == "258") return "RAA"
+      if (cc == "265") return "AAA"; if (cc == "271") return "ACA"
+      if (cc == "272") return "CCA"; if (cc == "274") return "ASA"
+      if (cc == "275") return "STA"; if (cc == "280") return "DWA"
+      if (cc == "282") return "DPA"; if (cc == "300") return "SNA"
+      return "?"
+    }
     function extras(line,   body, n, arr, i, k, v, p, out) {
       if (!match(line, /\{[^}]*\}/)) return ""
       body = substr(line, RSTART+1, RLENGTH-2)
@@ -268,6 +287,18 @@ traffic_summary() {
       cnt[rc] += v; if (rc == "2001") ok += v; else nok += v
       exa = extras($0)
       if (exa != "") { xcnt[exa SUBSEP rc] += v; xseen[exa] = 1; rcseen[rc] = 1 }
+    }
+    # Inbound (server-initiated by the peer, e.g. RAR): received ON the client
+    # connection and answered by us. Same connection, opposite direction -- the
+    # summary used to ignore it. Aggregate per command-code.
+    /^diameter_client_requests_received_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      inReq[cc] += sgn*$2; inSeen[cc] = 1; inReqTot += sgn*$2
+    }
+    /^diameter_client_answers_sent_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      rc = getlabel($0, "result_code"); if (rc == "") rc = "?"
+      inAns[cc SUBSEP rc] += sgn*$2; inSeen[cc] = 1; inRcSeen[cc SUBSEP rc] = 1; inAnsTot += sgn*$2
     }
     /^diameter_client_response_delay_seconds_sum/ {
       src = getlabel($0, "source"); app = getlabel($0, "application_id"); cc = getlabel($0, "command_code")
@@ -314,16 +345,27 @@ traffic_summary() {
           for (e in xseen) for (rc2 in rcseen) { c2 = xcnt[e SUBSEP rc2]; if (c2 == 0) continue; col2 = (rc2 == "2001") ? GRN : RED; printf "    %-26s %s%-8s%s : %d\n", e, col2, rc2, RST, c2 }
         }
       }
+      # Inbound (server-initiated by peer on the client connection): RAR/RAA etc.
+      if (inReqTot != 0 || inAnsTot != 0) {
+        printf "\n%s--- Inbound (server-initiated by peer: RAR, ...) ---%s\n", CYN, RST
+        printf "  Received requests:\n"
+        # order command-codes numerically so Received and Answers match
+        _n = 0; for (cc in inSeen) { _ccs[++_n] = cc }
+        for (_a = 1; _a <= _n; _a++) for (_b = _a+1; _b <= _n; _b++) if ((_ccs[_a]+0) > (_ccs[_b]+0)) { _t = _ccs[_a]; _ccs[_a] = _ccs[_b]; _ccs[_b] = _t }
+        for (_a = 1; _a <= _n; _a++) { cc = _ccs[_a]; if (inReq[cc] == 0) continue; printf "    %-6s %-5s : %d\n", cc, "(" cmdName(cc) ")", inReq[cc] }
+        printf "  Answers sent (by result-code):\n"
+        for (_a = 1; _a <= _n; _a++) { cc = _ccs[_a]; for (kk in inAns) { split(kk, a, SUBSEP); if (a[1] != cc || inAns[kk] == 0) continue; col = (a[2] == "2001") ? GRN : RED; printf "    %-6s %-5s rc=%s%-6s%s : %d\n", a[1], "(" cmdAnsName(a[1]) ")", col, a[2], RST, inAns[kk] } }
+      }
       if (totcount > 0) {
         printf "\n  %sLatency (s):%s\n", BLD, RST
         printf "    Average:     %.6f  (sum=%.3f count=%d)\n", totsum/totcount, totsum, totcount
         printf "    By label:\n"
-        printf "      %s%-12s %-10s %-8s %-30s %-10s %-10s%s\n", BLD, "SOURCE", "APP", "COMMAND", "LABELS", "COUNT", "AVG(s)", RST
+        printf "      %s%-12s %-10s %-12s %-30s %-10s %-10s%s\n", BLD, "SOURCE", "APP", "COMMAND", "LABELS", "COUNT", "AVG(s)", RST
         for (k in seen) {
           c = lcount[k]; if (c <= 0) continue
           avg = lsum[k] / c
           lbl = (lext[k] == "" ? "-" : lext[k])
-          printf "      %-12s %-10s %-8s %-30s %-10d %-10.6f\n", lsrc[k], lapp[k], lcc[k], lbl, c, avg
+          printf "      %-12s %-10s %-12s %-30s %-10d %-10.6f\n", lsrc[k], lapp[k], lcc[k] "(" cmdName(lcc[k]) ")", lbl, c, avg
         }
       }
     }' "$f1" "$f2"

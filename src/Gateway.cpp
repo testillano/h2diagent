@@ -275,6 +275,15 @@ void Gateway::start() {
         diameterClient_ =
             std::make_unique<diametercomm::DiameterClient>(io_, peerConfig, config_.diameterClientTransport);
         diameterClient_->enableMetrics(metrics_, config_.productName);
+        // Bidirectional Diameter (RFC 6733): after CER/CEA the remote peer may
+        // send server-initiated requests (e.g. RAR/DPR) on the connection WE
+        // opened. Forward them to h2agent like any inbound request and answer
+        // back on this same client leg (fromClient=true selects the client sink
+        // for the RAA). Without this the request would be silently dropped.
+        diameterClient_->setRequestCallback(
+            [this](std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg) {
+                onDiameterRequest(std::move(peer), std::move(msg), /*fromClient=*/true);
+            });
         diameterClient_->setTimeoutCallback([this](uint32_t hbh) {
             LOGWARNING(ert::tracing::Logger::warning(
                 ert::tracing::Logger::asString("Diameter request timed out hbh=0x%08x", hbh), ERT_FILE_LOCATION));
@@ -297,9 +306,12 @@ void Gateway::start() {
     }
 
     // --- HTTP/2 client towards h2agent (for inbound flow) ---
-    // Only needed when acting as Diameter server (inbound: receives Diameter, forwards to h2agent)
-    // Uses dedicated single-threaded io_context to avoid nghttp2 re-entrancy under load.
-    if (config_.h2agentPort > 0 && config_.diameterPort > 0) {
+    // Needed whenever we may RECEIVE Diameter requests to forward to h2agent.
+    // That happens on the server leg (diameterPort>0) AND, for bidirectional
+    // Diameter, on the client leg too (server-initiated RAR/DPR on the
+    // connection we opened, diameterPeerHost set). Uses a dedicated
+    // single-threaded io_context to avoid nghttp2 re-entrancy under load.
+    if (config_.h2agentPort > 0 && (config_.diameterPort > 0 || !config_.diameterPeerHost.empty())) {
         h2clientWork_ = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
             boost::asio::make_work_guard(h2clientIo_));
         h2clientReconnectTimer_ = std::make_unique<boost::asio::steady_timer>(h2clientIo_);
@@ -508,9 +520,26 @@ void Gateway::stop() {
 }
 
 // ============================================================================
+// sendDiameterAnswer - route an answer back on the originating leg
+// ============================================================================
+void Gateway::sendDiameterAnswer(const std::shared_ptr<diametercomm::Peer>& peer, diametercomm::Peer::Buffer&& answer,
+                                 bool fromClient) {
+    if (fromClient) {
+        // Server-initiated request (e.g. RAR) received on the client leg: reply
+        // on the same connection via the client (increments the client
+        // answers_sent metric).
+        if (diameterClient_) diameterClient_->sendAnswer(std::move(answer));
+        return;
+    }
+    // Classic inbound on the server leg: reply through the accepted peer.
+    if (diameterServer_) diameterServer_->sendAnswer(peer, std::move(answer));
+}
+
+// ============================================================================
 // onDiameterRequest - Inbound: Diameter -> JSON -> HTTP/2 -> h2agent
 // ============================================================================
-void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg) {
+void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg,
+                                bool fromClient) {
     if (msg.size() < 20) {
         LOGWARNING(
             ert::tracing::Logger::warning("Received malformed Diameter message (< 20 bytes)", ERT_FILE_LOCATION));
@@ -578,7 +607,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     auto h_ptr = std::make_shared<nghttp2::asio_http2::header_map>(std::move(h));
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
 
-    boost::asio::post(h2clientIo_, [this, peerPtr, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr,
+    boost::asio::post(h2clientIo_, [this, peerPtr, fromClient, hbh, e2e, commandCode, appId, h_ptr, bodyStr_ptr,
                                     fullUri_copy = std::move(fullUri)]() {
         if (!h2clientSession_) {
             LOGWARNING(
@@ -609,7 +638,8 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         auto timer = std::make_shared<boost::asio::steady_timer>(io_);
         timer->expires_after(std::chrono::milliseconds(config_.diameterTimeoutMs));
         timer->async_wait(
-            [this, timer, timedOut, peerPtr, hbh, e2e, commandCode, appId](const boost::system::error_code& ec) {
+            [this, timer, timedOut, peerPtr, fromClient, hbh, e2e, commandCode, appId](
+                const boost::system::error_code& ec) {
                 if (ec) return;                        // cancelled (response arrived in time)
                 if (timedOut->exchange(true)) return;  // already handled
 
@@ -636,17 +666,17 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                 try {
                     diametercodec::codec::Message answerMsg = diametercodec::codec::Message::fromJson(errorJson, dict);
                     diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                    diameterServer_->sendAnswer(peerPtr, std::move(encoded));
+                    sendDiameterAnswer(peerPtr, std::move(encoded), fromClient);
                 } catch (...) {
                 }
             });
 
-        req->on_response([this, peerPtr, hbh, e2e, commandCode, appId, responseBody, timedOut,
+        req->on_response([this, peerPtr, fromClient, hbh, e2e, commandCode, appId, responseBody, timedOut,
                           timer](const nghttp2::asio_http2::client::response& res) {
             int statusCode = res.status_code();
 
-            res.on_data([this, peerPtr, hbh, e2e, commandCode, appId, responseBody, timedOut, timer, statusCode](
-                            const uint8_t* data, std::size_t len) {
+            res.on_data([this, peerPtr, fromClient, hbh, e2e, commandCode, appId, responseBody, timedOut, timer,
+                         statusCode](const uint8_t* data, std::size_t len) {
                 if (len > 0) {
                     responseBody->append(reinterpret_cast<const char*>(data), len);
                     return;
@@ -654,7 +684,8 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
 
                 // End of response body - post processing outside nghttp2 callback to avoid re-entrancy
                 boost::asio::post(
-                    io_, [this, peerPtr, hbh, e2e, commandCode, appId, responseBody, timedOut, timer, statusCode]() {
+                    io_, [this, peerPtr, fromClient, hbh, e2e, commandCode, appId, responseBody, timedOut, timer,
+                          statusCode]() {
                         timer->cancel();               // cancel the timeout
                         if (timedOut->load()) return;  // already sent error answer
 
@@ -693,7 +724,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                                 diametercodec::codec::Message answerMsg =
                                     diametercodec::codec::Message::fromJson(errorJson, dict);
                                 diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                                diameterServer_->sendAnswer(peerPtr, std::move(encoded));
+                                sendDiameterAnswer(peerPtr, std::move(encoded), fromClient);
                             } catch (...) {
                             }
                             return;
@@ -722,7 +753,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                             diametercodec::codec::Message answerMsg =
                                 diametercodec::codec::Message::fromJson(respJson, dict);
 
-                            // 6. Encode and send Diameter answer back to peer
+                            // 6. Encode and send Diameter answer back on the originating leg
                             diametercodec::core::Buffer encoded = answerMsg.encode(dict);
 
                             LOGINFORMATIONAL(ert::tracing::Logger::informational(
@@ -730,7 +761,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                                                                encoded.size(), hbh),
                                 ERT_FILE_LOCATION));
 
-                            diameterServer_->sendAnswer(peerPtr, std::move(encoded));
+                            sendDiameterAnswer(peerPtr, std::move(encoded), fromClient);
 
                         } catch (const std::exception& e) {
                             LOGWARNING(ert::tracing::Logger::warning(

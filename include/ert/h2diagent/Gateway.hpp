@@ -119,8 +119,20 @@ class Gateway {
     void stop();
 
    private:
-    // Inbound: Diameter request from Client -> translate -> forward to h2agent
-    void onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg);
+    // Inbound: Diameter request from a peer -> translate -> forward to h2agent,
+    // then send the answer back on the SAME leg it arrived on. Diameter is
+    // bidirectional (RFC 6733): a request can arrive either on the Diameter
+    // SERVER leg (a peer connected to us) or, server-initiated, on the Diameter
+    // CLIENT leg (the connection we opened). fromClient selects the answer sink.
+    void onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg,
+                           bool fromClient = false);
+
+    // Send an already-encoded Diameter answer back on the leg the request came
+    // from: the client leg (server-initiated request answered by us) or the
+    // server leg (classic inbound). Routes to the matching diametercomm object
+    // so the correct answers_sent metric (client vs server) is incremented.
+    void sendDiameterAnswer(const std::shared_ptr<diametercomm::Peer>& peer, diametercomm::Peer::Buffer&& answer,
+                            bool fromClient);
 
     // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to Server
     void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
