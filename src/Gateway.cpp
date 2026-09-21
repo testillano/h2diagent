@@ -642,39 +642,38 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         // Inbound timeout: if h2agent doesn't respond in time, send DIAMETER_UNABLE_TO_COMPLY
         auto timer = std::make_shared<boost::asio::steady_timer>(io_);
         timer->expires_after(std::chrono::milliseconds(config_.diameterTimeoutMs));
-        timer->async_wait(
-            [this, timer, timedOut, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId](
-                const boost::system::error_code& ec) {
-                if (ec) return;                        // cancelled (response arrived in time)
-                if (timedOut->exchange(true)) return;  // already handled
+        timer->async_wait([this, timer, timedOut, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode,
+                           appId](const boost::system::error_code& ec) {
+            if (ec) return;                        // cancelled (response arrived in time)
+            if (timedOut->exchange(true)) return;  // already handled
 
-                LOGWARNING(ert::tracing::Logger::warning(
-                    ert::tracing::Logger::asString(
-                        "Inbound timeout (%u ms) for command %u, sending DIAMETER_UNABLE_TO_COMPLY",
-                        config_.diameterTimeoutMs, commandCode),
-                    ERT_FILE_LOCATION));
+            LOGWARNING(ert::tracing::Logger::warning(
+                ert::tracing::Logger::asString(
+                    "Inbound timeout (%u ms) for command %u, sending DIAMETER_UNABLE_TO_COMPLY",
+                    config_.diameterTimeoutMs, commandCode),
+                ERT_FILE_LOCATION));
 
-                // Build minimal error answer
-                const auto& dict = getDictionary(appId);
-                nlohmann::json errorJson = {{"Result-Code", 5012},
-                                            {"Origin-Host", config_.originHost},
-                                            {"Origin-Realm", config_.originRealm},
-                                            {"_header",
-                                             {{"version", 1},
-                                              {"flags", 0},
-                                              {"command-code", commandCode},
-                                              {"request", false},
-                                              {"application-id", appId},
-                                              {"hop-by-hop-id", hbh},
-                                              {"end-to-end-id", e2e}}}};
+            // Build minimal error answer
+            const auto& dict = getDictionary(appId);
+            nlohmann::json errorJson = {{"Result-Code", 5012},
+                                        {"Origin-Host", config_.originHost},
+                                        {"Origin-Realm", config_.originRealm},
+                                        {"_header",
+                                         {{"version", 1},
+                                          {"flags", 0},
+                                          {"command-code", commandCode},
+                                          {"request", false},
+                                          {"application-id", appId},
+                                          {"hop-by-hop-id", hbh},
+                                          {"end-to-end-id", e2e}}}};
 
-                try {
-                    diametercodec::codec::Message answerMsg = diametercodec::codec::Message::fromJson(errorJson, dict);
-                    diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                    sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
-                } catch (...) {
-                }
-            });
+            try {
+                diametercodec::codec::Message answerMsg = diametercodec::codec::Message::fromJson(errorJson, dict);
+                diametercodec::core::Buffer encoded = answerMsg.encode(dict);
+                sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
+            } catch (...) {
+            }
+        });
 
         req->on_response([this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
                           timedOut, timer](const nghttp2::asio_http2::client::response& res) {
@@ -688,92 +687,91 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                 }
 
                 // End of response body - post processing outside nghttp2 callback to avoid re-entrancy
-                boost::asio::post(
-                    io_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
-                          timedOut, timer, statusCode]() {
-                        timer->cancel();               // cancel the timeout
-                        if (timedOut->load()) return;  // already sent error answer
+                boost::asio::post(io_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
+                                        responseBody, timedOut, timer, statusCode]() {
+                    timer->cancel();               // cancel the timeout
+                    if (timedOut->load()) return;  // already sent error answer
 
-                        LOGINFORMATIONAL(ert::tracing::Logger::informational(
-                            ert::tracing::Logger::asString("h2agent responded %d (%zu bytes)", statusCode,
-                                                           responseBody->size()),
+                    LOGINFORMATIONAL(ert::tracing::Logger::informational(
+                        ert::tracing::Logger::asString("h2agent responded %d (%zu bytes)", statusCode,
+                                                       responseBody->size()),
+                        ERT_FILE_LOCATION));
+
+                    if (metrics_) {
+                        auto& counter = h2_client_responses_received_counter_family_ptr_->Add(
+                            {{"source", config_.productName},
+                             {"method", "POST"},
+                             {"status_code", std::to_string(statusCode)}});
+                        counter.Increment();
+                    }
+
+                    if (statusCode != 200 || responseBody->empty()) {
+                        LOGWARNING(ert::tracing::Logger::warning(
+                            ert::tracing::Logger::asString("h2agent returned non-200 or empty: %d", statusCode),
                             ERT_FILE_LOCATION));
 
-                        if (metrics_) {
-                            auto& counter = h2_client_responses_received_counter_family_ptr_->Add(
-                                {{"source", config_.productName},
-                                 {"method", "POST"},
-                                 {"status_code", std::to_string(statusCode)}});
-                            counter.Increment();
-                        }
-
-                        if (statusCode != 200 || responseBody->empty()) {
-                            LOGWARNING(ert::tracing::Logger::warning(
-                                ert::tracing::Logger::asString("h2agent returned non-200 or empty: %d", statusCode),
-                                ERT_FILE_LOCATION));
-
-                            // Send DIAMETER_UNABLE_TO_COMPLY (5012)
-                            const auto& dict = getDictionary(appId);
-                            nlohmann::json errorJson = {{"Result-Code", 5012},
-                                                        {"Origin-Host", config_.originHost},
-                                                        {"Origin-Realm", config_.originRealm},
-                                                        {"_header",
-                                                         {{"version", 1},
-                                                          {"flags", 0},
-                                                          {"command-code", commandCode},
-                                                          {"request", false},
-                                                          {"application-id", appId},
-                                                          {"hop-by-hop-id", hbh},
-                                                          {"end-to-end-id", e2e}}}};
-                            try {
-                                diametercodec::codec::Message answerMsg =
-                                    diametercodec::codec::Message::fromJson(errorJson, dict);
-                                diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                                sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
-                            } catch (...) {
-                            }
-                            return;
-                        }
-
-                        // 5. Parse JSON response -> Diameter answer
+                        // Send DIAMETER_UNABLE_TO_COMPLY (5012)
+                        const auto& dict = getDictionary(appId);
+                        nlohmann::json errorJson = {{"Result-Code", 5012},
+                                                    {"Origin-Host", config_.originHost},
+                                                    {"Origin-Realm", config_.originRealm},
+                                                    {"_header",
+                                                     {{"version", 1},
+                                                      {"flags", 0},
+                                                      {"command-code", commandCode},
+                                                      {"request", false},
+                                                      {"application-id", appId},
+                                                      {"hop-by-hop-id", hbh},
+                                                      {"end-to-end-id", e2e}}}};
                         try {
-                            nlohmann::json respJson = nlohmann::json::parse(*responseBody);
-
-                            LOGDEBUG(ert::tracing::Logger::debug(
-                                ert::tracing::Logger::asString("JSON -> Diameter: %s", responseBody->c_str()),
-                                ERT_FILE_LOCATION));
-
-                            // Inject _header for the answer if not present
-                            if (!respJson.contains("_header")) {
-                                respJson["_header"] = {{"version", 1},
-                                                       {"flags", 0},  // answer (no R-bit)
-                                                       {"command-code", commandCode},
-                                                       {"request", false},
-                                                       {"application-id", appId},
-                                                       {"hop-by-hop-id", hbh},
-                                                       {"end-to-end-id", e2e}};
-                            }
-
-                            const auto& dict = getDictionary(appId);
                             diametercodec::codec::Message answerMsg =
-                                diametercodec::codec::Message::fromJson(respJson, dict);
-
-                            // 6. Encode and send Diameter answer back on the originating leg
+                                diametercodec::codec::Message::fromJson(errorJson, dict);
                             diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-
-                            LOGINFORMATIONAL(ert::tracing::Logger::informational(
-                                ert::tracing::Logger::asString("Sending Diameter answer (%zu bytes) hbh=0x%08x",
-                                                               encoded.size(), hbh),
-                                ERT_FILE_LOCATION));
-
                             sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
-
-                        } catch (const std::exception& e) {
-                            LOGWARNING(ert::tracing::Logger::warning(
-                                ert::tracing::Logger::asString("Failed to build Diameter answer: %s", e.what()),
-                                ERT_FILE_LOCATION));
+                        } catch (...) {
                         }
-                    });  // end io_.post() for response processing
+                        return;
+                    }
+
+                    // 5. Parse JSON response -> Diameter answer
+                    try {
+                        nlohmann::json respJson = nlohmann::json::parse(*responseBody);
+
+                        LOGDEBUG(ert::tracing::Logger::debug(
+                            ert::tracing::Logger::asString("JSON -> Diameter: %s", responseBody->c_str()),
+                            ERT_FILE_LOCATION));
+
+                        // Inject _header for the answer if not present
+                        if (!respJson.contains("_header")) {
+                            respJson["_header"] = {{"version", 1},
+                                                   {"flags", 0},  // answer (no R-bit)
+                                                   {"command-code", commandCode},
+                                                   {"request", false},
+                                                   {"application-id", appId},
+                                                   {"hop-by-hop-id", hbh},
+                                                   {"end-to-end-id", e2e}};
+                        }
+
+                        const auto& dict = getDictionary(appId);
+                        diametercodec::codec::Message answerMsg =
+                            diametercodec::codec::Message::fromJson(respJson, dict);
+
+                        // 6. Encode and send Diameter answer back on the originating leg
+                        diametercodec::core::Buffer encoded = answerMsg.encode(dict);
+
+                        LOGINFORMATIONAL(ert::tracing::Logger::informational(
+                            ert::tracing::Logger::asString("Sending Diameter answer (%zu bytes) hbh=0x%08x",
+                                                           encoded.size(), hbh),
+                            ERT_FILE_LOCATION));
+
+                        sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
+
+                    } catch (const std::exception& e) {
+                        LOGWARNING(ert::tracing::Logger::warning(
+                            ert::tracing::Logger::asString("Failed to build Diameter answer: %s", e.what()),
+                            ERT_FILE_LOCATION));
+                    }
+                });  // end io_.post() for response processing
             });
         });
     });  // end io_service().post()
@@ -902,8 +900,8 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
         // needed on the way back.
         diametercomm::DiameterClient* client = diameterClientPool_ ? diameterClientPool_->pickReady() : nullptr;
         if (!client) {
-            LOGWARNING(ert::tracing::Logger::warning(
-                "No ready Diameter connection in the pool for outbound request", ERT_FILE_LOCATION));
+            LOGWARNING(ert::tracing::Logger::warning("No ready Diameter connection in the pool for outbound request",
+                                                     ERT_FILE_LOCATION));
             respond(503, R"({"error":"Diameter peer not connected"})");
             return;
         }

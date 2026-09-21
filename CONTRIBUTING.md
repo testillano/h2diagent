@@ -26,7 +26,19 @@ $ ./ut.sh
 
 ### Source style format
 
-Please, execute `clang-format` formatting before submitting:
+Please, run the format check before submitting (the CI enforces the same check
+with the same clang-format image before building):
+
+```bash
+$ ./format.sh          # check only (dry-run -Werror), like CI
+$ ./format.sh --fix    # reformat in place
+```
+
+`format.sh` uses the CI clang-format Docker image, so a local pass guarantees the
+CI passes regardless of any clang-format version installed on your machine (and
+it excludes the git-ignored `deps-local/` vendored tree).
+
+Alternatively, run `clang-format` directly:
 
 ```bash
 $ sources=$(find . -name "*.hpp" -o -name "*.cpp")
