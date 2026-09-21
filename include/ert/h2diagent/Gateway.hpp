@@ -28,6 +28,7 @@ Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercodec/stack/Dictionary.hpp>
 #include <ert/diametercomm/DiameterClient.hpp>
 #include <ert/diametercomm/DiameterServer.hpp>
+#include <ert/h2diagent/DiameterClientPool.hpp>
 #include <ert/metrics/Metrics.hpp>
 #include <functional>
 #include <map>
@@ -56,6 +57,11 @@ struct GatewayConfig {
     // Diameter transport per role (single-homing when SCTP). Default: TCP.
     diametercomm::Transport diameterServerTransport{diametercomm::Transport::TCP};
     diametercomm::Transport diameterClientTransport{diametercomm::Transport::TCP};
+
+    // Number of outbound Diameter client connections to the peer (pool size).
+    // Default 1 = today's single-connection behaviour. >1 opens a round-robin
+    // pool (TCP only; SCTP + N>1 is rejected at startup). See DiameterClientPool.
+    int diameterConnections{1};
 
     // Diameter TLS/TCP security (Phase 1). NOTE: SCTP is NOT secured (DTLS/SCTP
     // out of scope -- see README "gap"): TLS options are ignored on SCTP.
@@ -123,16 +129,19 @@ class Gateway {
     // then send the answer back on the SAME leg it arrived on. Diameter is
     // bidirectional (RFC 6733): a request can arrive either on the Diameter
     // SERVER leg (a peer connected to us) or, server-initiated, on the Diameter
-    // CLIENT leg (the connection we opened). fromClient selects the answer sink.
+    // CLIENT leg (a connection we opened). fromClient selects the answer sink;
+    // originatingClient identifies WHICH pooled client received it (so the RAA
+    // goes back on the exact same connection). nullptr => server leg.
     void onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg,
-                           bool fromClient = false);
+                           bool fromClient = false, diametercomm::DiameterClient* originatingClient = nullptr);
 
     // Send an already-encoded Diameter answer back on the leg the request came
-    // from: the client leg (server-initiated request answered by us) or the
-    // server leg (classic inbound). Routes to the matching diametercomm object
-    // so the correct answers_sent metric (client vs server) is incremented.
+    // from: the client leg (server-initiated request answered by us, on the
+    // originatingClient connection) or the server leg (classic inbound). Routes
+    // to the matching diametercomm object so the correct answers_sent metric
+    // (client vs server) is incremented.
     void sendDiameterAnswer(const std::shared_ptr<diametercomm::Peer>& peer, diametercomm::Peer::Buffer&& answer,
-                            bool fromClient);
+                            bool fromClient, diametercomm::DiameterClient* originatingClient);
 
     // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to Server
     void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
@@ -169,7 +178,7 @@ class Gateway {
 
     // Components
     std::unique_ptr<diametercomm::DiameterServer> diameterServer_;
-    std::unique_ptr<diametercomm::DiameterClient> diameterClient_;
+    std::unique_ptr<DiameterClientPool> diameterClientPool_;  // N outbound connections (N>=1)
 
     // Multi-stack dictionaries indexed by Application-Id
     std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;

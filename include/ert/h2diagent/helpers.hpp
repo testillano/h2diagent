@@ -6,6 +6,8 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -145,6 +147,41 @@ inline bool normalizeTransport(const std::string& value, std::string& normalized
         return true;
     }
     return false;
+}
+
+// Validate the --diameter-connections value against the client transport.
+// Rules (see the connection-pool proposal):
+//   - N must be >= 1.
+//   - N == 1 is today's single-connection behaviour, allowed for any transport.
+//   - N  > 1 opens a client pool, supported over TCP ONLY. Over SCTP it FAILS
+//     FAST (the SCTP association is single/one-to-one and multi-streaming is not
+//     implemented; the conceptually-correct SCTP lever is multi-streaming, a
+//     future diametercomm capability). The flag stays transport-agnostic in name;
+//     the scope is enforced here in behaviour.
+// On failure returns false and fills 'err' with a clear message; on success
+// returns true and clears 'err'.
+inline bool validateDiameterConnections(int connections, bool isSctp, std::string& err) {
+    if (connections < 1) {
+        err = "--diameter-connections must be >= 1";
+        return false;
+    }
+    if (connections > 1 && isSctp) {
+        err =
+            "--diameter-connections > 1 is only supported over TCP; SCTP uses a single association "
+            "(multi-streaming not implemented). Use N=1 for SCTP.";
+        return false;
+    }
+    err.clear();
+    return true;
+}
+
+// Round-robin index selection for the Diameter client connection pool. Returns
+// the connection index to use for the next outbound request and advances the
+// cursor by one (one relaxed atomic increment). 'size' is the pool size.
+// Defensive: size 0 returns 0 (never divides by zero).
+inline std::size_t roundRobinIndex(std::atomic<std::size_t>& cursor, std::size_t size) {
+    if (size <= 1) return 0;
+    return cursor.fetch_add(1, std::memory_order_relaxed) % size;
 }
 
 }  // namespace helpers

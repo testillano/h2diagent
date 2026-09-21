@@ -63,7 +63,13 @@ void usage(const char* name) {
         << "  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport;\n"
         << "                                  sctp is single-homing (default: tcp)\n"
         << "  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;\n"
-        << "                                  sctp is single-homing (default: tcp)\n\n"
+        << "                                  sctp is single-homing (default: tcp)\n"
+        << "  --diameter-connections <N>      Number of outbound Diameter client connections to the\n"
+        << "                                  peer (default: 1). N>1 opens a round-robin pool for\n"
+        << "                                  robustness/headroom. TCP only: with sctp, N>1 fails fast\n"
+        << "                                  (SCTP uses a single association; multi-streaming not\n"
+        << "                                  implemented). The peer must accept N connections per\n"
+        << "                                  origin-host.\n\n"
         << "Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):\n"
         << "  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.\n"
         << "  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS.\n"
@@ -131,6 +137,7 @@ int main(int argc, char* argv[]) {
         {"diameter-timeout-ms", required_argument, nullptr, 0},
         {"diameter-server-transport", required_argument, nullptr, 0},
         {"diameter-client-transport", required_argument, nullptr, 0},
+        {"diameter-connections", required_argument, nullptr, 0},
         {"diameter-server-key", required_argument, nullptr, 0},
         {"diameter-server-crt", required_argument, nullptr, 0},
         {"diameter-server-key-password", required_argument, nullptr, 0},
@@ -193,6 +200,8 @@ int main(int argc, char* argv[]) {
                         return 1;
                     }
                     config.diameterClientTransport = toTransport(norm);
+                } else if (name == "diameter-connections") {
+                    config.diameterConnections = std::stoi(optarg);
                 } else if (name == "diameter-server-key")
                     config.diameterServerKeyFile = optarg;
                 else if (name == "diameter-server-crt")
@@ -261,6 +270,18 @@ int main(int argc, char* argv[]) {
 
     printBanner();
 
+    // Fail fast on invalid --diameter-connections (only meaningful when an
+    // outbound client is configured). N>=1; N>1 is TCP only (SCTP + N>1 rejected).
+    if (!config.diameterPeerHost.empty()) {
+        std::string connErr;
+        if (!ert::h2diagent::helpers::validateDiameterConnections(
+                config.diameterConnections, config.diameterClientTransport == ert::diametercomm::Transport::SCTP,
+                connErr)) {
+            std::cerr << "Invalid --diameter-connections: " << connErr << std::endl;
+            return 1;
+        }
+    }
+
     std::cout << "Starting " << progname << std::endl;
     std::cout << "Log level: " << logLevel << std::endl;
     std::cout << "Verbose (stdout): " << (verbose ? "true" : "false") << std::endl;
@@ -270,6 +291,7 @@ int main(int argc, char* argv[]) {
     if (!config.diameterPeerHost.empty()) {
         std::cout << "Diameter peer: " << config.diameterPeerHost << ":" << config.diameterPeerPort << std::endl;
         std::cout << "Diameter client transport: " << transportName(config.diameterClientTransport) << std::endl;
+        std::cout << "Diameter client connections: " << config.diameterConnections << std::endl;
     }
     std::cout << "Origin-Host: " << config.originHost << std::endl;
     std::cout << "Origin-Realm: " << config.originRealm << std::endl;

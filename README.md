@@ -342,6 +342,9 @@ Diameter:
                                   sctp is single-homing (default: tcp)
   --diameter-client-transport <tcp|sctp>  Outbound client (to peer) transport;
                                   sctp is single-homing (default: tcp)
+  --diameter-connections <N>      Number of outbound Diameter client connections to
+                                  the peer (default: 1). N>1 opens a round-robin pool.
+                                  TCP only; with sctp, N>1 fails fast at startup.
 
 Diameter TLS (TCP only; SCTP/DTLS not supported):
   --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS
@@ -371,6 +374,36 @@ General:
   --version                       Program version
   --help                          This help
 ```
+
+## Diameter client connection pool (`--diameter-connections`)
+
+By default h2diagent opens a **single** outbound Diameter connection to the peer
+(`--diameter-connections 1`), which is byte-for-byte the historical behaviour.
+Set `--diameter-connections N` (N>1) to open a **pool of N connections** to the
+same peer; outbound requests are striped **round-robin** across the pool and each
+answer returns on the connection that carries it (per-transaction correlation is
+kept per-connection, unchanged). Inbound server-initiated requests (e.g. RAR) are
+answered back on the exact connection they arrived on.
+
+Why use it (it is opt-in, not a throughput booster by default):
+
+- **Robustness / graceful degradation.** With one connection, a peer reset or DPR
+  stalls all Diameter traffic until reconnect. A pool keeps serving on the
+  remaining N-1 connections while one reconnects (each connection reconnects
+  independently). The gateway prefers a ready connection when sending.
+- **Headroom** for a much faster SUT, where a single socket / correlation mutex
+  could serialise before the network does.
+
+Scope and prerequisites:
+
+- **TCP only.** With `--diameter-client-transport sctp` and N>1 the process
+  **fails fast at startup** with a clear message. SCTP uses a single one-to-one
+  association here and multi-streaming (the conceptually-correct SCTP lever) is
+  not implemented in `diametercomm`; the flag stays transport-agnostic in name so
+  the restriction can be lifted later without a rename. Use N=1 for SCTP.
+- **Peer must accept N connections per origin-host.** Each pooled connection does
+  its own CER from the same Origin-Host; some peers cap connections per
+  origin-host. Confirm your SUT accepts N before raising it.
 
 ## Secure Diameter (TLS/TCP)
 
@@ -568,7 +601,7 @@ Counters provided by diametercomm library:
 
    Bidirectional Diameter (RFC 6733) -- server-initiated requests sent on the
    server leg and the correlated answers received back. When h2diagent
-   simulates a peer (e.g. a CCPC) it may PUSH a request (e.g. RAR) down a
+   simulates a peer -- it may PUSH a request (e.g. RAR) down a
    connected peer and correlate the incoming answer (RAA) by hop-by-hop:
 
    diameter_server_requests_sent_counter [source] [command_code] [application_id]

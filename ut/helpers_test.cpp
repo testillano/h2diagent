@@ -5,6 +5,7 @@ Unit tests for helper functions.
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <ert/h2diagent/helpers.hpp>
 
 using namespace ert::h2diagent::helpers;
@@ -178,4 +179,74 @@ TEST(Helpers, NormalizeTransport_InvalidRejected) {
     EXPECT_FALSE(normalizeTransport("tcp ", norm));  // trailing space is not a valid token
     EXPECT_FALSE(normalizeTransport("sctpx", norm));
     EXPECT_EQ(norm, "unchanged");
+}
+
+// =============================================================================
+// validateDiameterConnections (CLI --diameter-connections rule)
+// =============================================================================
+TEST(Helpers, ValidateDiameterConnections_DefaultOneTcp) {
+    std::string err = "x";
+    EXPECT_TRUE(validateDiameterConnections(1, /*isSctp=*/false, err));
+    EXPECT_TRUE(err.empty());
+}
+
+TEST(Helpers, ValidateDiameterConnections_DefaultOneSctp) {
+    // N=1 is today's behaviour; allowed for SCTP too.
+    std::string err = "x";
+    EXPECT_TRUE(validateDiameterConnections(1, /*isSctp=*/true, err));
+    EXPECT_TRUE(err.empty());
+}
+
+TEST(Helpers, ValidateDiameterConnections_PoolTcpOk) {
+    std::string err = "x";
+    EXPECT_TRUE(validateDiameterConnections(4, /*isSctp=*/false, err));
+    EXPECT_TRUE(err.empty());
+}
+
+TEST(Helpers, ValidateDiameterConnections_PoolSctpRejected) {
+    // SCTP + N>1 must fail fast (multi-streaming not implemented).
+    std::string err;
+    EXPECT_FALSE(validateDiameterConnections(2, /*isSctp=*/true, err));
+    EXPECT_FALSE(err.empty());  // must carry a clear message
+}
+
+TEST(Helpers, ValidateDiameterConnections_ZeroOrNegativeRejected) {
+    std::string err;
+    EXPECT_FALSE(validateDiameterConnections(0, /*isSctp=*/false, err));
+    EXPECT_FALSE(err.empty());
+    err.clear();
+    EXPECT_FALSE(validateDiameterConnections(-3, /*isSctp=*/false, err));
+    EXPECT_FALSE(err.empty());
+}
+
+// =============================================================================
+// roundRobinIndex (pool striping selection) -- pure, used by DiameterClientPool
+// =============================================================================
+TEST(Helpers, RoundRobinIndex_SingleConnection) {
+    // Pool of 1: always index 0 (today's single-connection behaviour).
+    std::atomic<std::size_t> cursor{0};
+    for (int i = 0; i < 5; ++i) EXPECT_EQ(roundRobinIndex(cursor, 1), 0u);
+}
+
+TEST(Helpers, RoundRobinIndex_CyclesAcrossPool) {
+    std::atomic<std::size_t> cursor{0};
+    // N=3: 0,1,2,0,1,2 ...
+    EXPECT_EQ(roundRobinIndex(cursor, 3), 0u);
+    EXPECT_EQ(roundRobinIndex(cursor, 3), 1u);
+    EXPECT_EQ(roundRobinIndex(cursor, 3), 2u);
+    EXPECT_EQ(roundRobinIndex(cursor, 3), 0u);
+    EXPECT_EQ(roundRobinIndex(cursor, 3), 1u);
+}
+
+TEST(Helpers, RoundRobinIndex_EvenDistribution) {
+    std::atomic<std::size_t> cursor{0};
+    int counts[4] = {0, 0, 0, 0};
+    for (int i = 0; i < 4000; ++i) counts[roundRobinIndex(cursor, 4)]++;
+    for (int i = 0; i < 4; ++i) EXPECT_EQ(counts[i], 1000);
+}
+
+TEST(Helpers, RoundRobinIndex_ZeroSizeSafe) {
+    // Defensive: size 0 must not divide-by-zero; returns 0.
+    std::atomic<std::size_t> cursor{0};
+    EXPECT_EQ(roundRobinIndex(cursor, 0), 0u);
 }
