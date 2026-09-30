@@ -27,9 +27,8 @@ data:
     # VARIABLES FROM HELM #
     #######################
     PNAME="{{ .Values.nameOverride | default .Values.productName }}"
-    METRICS_PORT="{{ .Values.prometheusPort }}"
-    SERVER_ADDR="localhost"
-    CURL=${CURL:-"curl -s"}
+    H2DIAHLP_METRICS_PORT="{{ .Values.prometheusPort }}"
+    H2DIAHLP_SERVER_ADDR="localhost"
 
     #############
     # EXECUTION #

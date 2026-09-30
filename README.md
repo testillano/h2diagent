@@ -742,8 +742,9 @@ traffic_summary before after --json   # machine-readable delta
 ```
 
 `metrics` takes an optional `[port]`; `traffic_summary` takes `--port <p>`
-(both default to `METRICS_PORT`). Use `-h` for full usage. Override targets via
-`METRICS_PORT`, `SERVER_ADDR`, `SCHEME`, `CURL`.
+(both default to `H2DIAHLP_METRICS_PORT`). Use `-h` for full usage. Override
+targets via `H2DIAHLP_METRICS_PORT`, `H2DIAHLP_SERVER_ADDR`, `H2DIAHLP_SCHEME`
+(h2diagent scrapes with an inline `curl -s`, so there is no CURL override).
 
 ### Grafana dashboard
 

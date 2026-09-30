@@ -27,10 +27,10 @@ data:
     # VARIABLES FROM HELM #
     #######################
     PNAME="{{ .Values.nameOverride | default .Values.productName }}"
-    TRAFFIC_PORT="{{ .Values.h2agent.trafficPort }}"
-    ADMIN_PORT="{{ .Values.h2agent.adminPort }}"
-    METRICS_PORT="{{ .Values.h2agent.prometheusPort }}"
-    CURL=${CURL:-"curl -s -i --http2-prior-knowledge"}
+    H2AHLP_TRAFFIC_PORT="{{ .Values.h2agent.trafficPort }}"
+    H2AHLP_ADMIN_PORT="{{ .Values.h2agent.adminPort }}"
+    H2AHLP_METRICS_PORT="{{ .Values.h2agent.prometheusPort }}"
+    H2AHLP_CURL=${H2AHLP_CURL:-"curl -s -i --http2-prior-knowledge"}
 
     #############
     # EXECUTION #

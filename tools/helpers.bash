@@ -18,16 +18,22 @@
 # h2agent metrics only reflect HTTP/2 relay, where a Diameter error answer is
 # still carried as HTTP/2 200).
 #
-# Every function accepts an optional [port] argument (overriding METRICS_PORT)
+# Every function accepts an optional [port] argument (overriding H2DIAHLP_METRICS_PORT)
 # and prints a one-line description with -h.
 
 #############
 # VARIABLES #
 #############
+# Namespaced (H2DIAHLP_*) and EXPORTED so a child process that runs (not sources)
+# a script inheriting the exported functions also gets these variables. The
+# per-helper prefix avoids clashing with the h2agent helper (H2AHLP_*) or any
+# unrelated shell variable. Override via the namespaced name, e.g.
+# H2DIAHLP_METRICS_PORT=9090 source helpers.bash
 PNAME=${PNAME:-h2diagent}
-METRICS_PORT=${METRICS_PORT:-8085}
-SCHEME=${SCHEME:-http}
-SERVER_ADDR=${SERVER_ADDR:-localhost}
+H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT:-8085}
+H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME:-http}
+H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR:-localhost}
+export PNAME H2DIAHLP_METRICS_PORT H2DIAHLP_SCHEME H2DIAHLP_SERVER_ADDR
 # NOTE: h2diagent exposes only a plain HTTP/1 Prometheus endpoint (no HTTP/2
 # admin API), so its scrapes use `curl -s` inline. We deliberately do NOT define
 # a global CURL variable here: exporting one would leak into a shell that also
@@ -43,8 +49,8 @@ SERVER_ADDR=${SERVER_ADDR:-localhost}
 
 # metrics_url [port]: build the Prometheus scrape URL.
 metrics_url() {
-  local port="${1:-${METRICS_PORT}}"
-  echo "${SCHEME}://${SERVER_ADDR}:${port}/metrics"
+  local port="${1:-${H2DIAHLP_METRICS_PORT}}"
+  echo "${H2DIAHLP_SCHEME}://${H2DIAHLP_SERVER_ADDR}:${port}/metrics"
 }
 
 # -----------------------------------------------------------------------------
@@ -52,7 +58,7 @@ metrics_url() {
 
 # metrics [port]: raw Prometheus metrics scraped from h2diagent.
 metrics() {
-  [ "$1" = "-h" ] && { echo "metrics [port]: raw Prometheus metrics from h2diagent (default ${METRICS_PORT})."; return 0; }
+  [ "$1" = "-h" ] && { echo "metrics [port]: raw Prometheus metrics from h2diagent (default ${H2DIAHLP_METRICS_PORT})."; return 0; }
   curl -s "$(metrics_url "$1")" 2>/dev/null
 }
 
@@ -65,7 +71,7 @@ metrics() {
 # (_sum/_count); the "By label" table also shows optional additional labels
 # (e.g. cc_request_type) configured via --metrics-additional-label. It also
 # renders a "by label x result-code" cross-tab (e.g. which cc_request_type got
-# which result-code). The metrics port is taken from METRICS_PORT (override
+# which result-code). The metrics port is taken from H2DIAHLP_METRICS_PORT (override
 # with --port). Portable awk.
 traffic_summary() {
   local snap_dir="/tmp/.h2diagent_traffic_summaries"
@@ -78,12 +84,12 @@ traffic_summary() {
   fi
 
   # Optional --port <p>. Local (dynamic scope) so recursive calls below inherit
-  # it while the caller's METRICS_PORT stays untouched after we return.
-  local METRICS_PORT="${METRICS_PORT}"
+  # it while the caller's H2DIAHLP_METRICS_PORT stays untouched after we return.
+  local H2DIAHLP_METRICS_PORT="${H2DIAHLP_METRICS_PORT}"
   local _args=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --port) METRICS_PORT="$2"; shift 2 ;;
+      --port) H2DIAHLP_METRICS_PORT="$2"; shift 2 ;;
       *) _args+=("$1"); shift ;;
     esac
   done
@@ -106,7 +112,7 @@ traffic_summary() {
     echo "       --show             List saved snapshots and their labels."
     echo "       --clean            Remove all saved snapshots."
     echo "       --json             JSON output (combinable with --now/--last/--delta)."
-    echo "       --port <p>         Metrics port (default: METRICS_PORT=${METRICS_PORT})."
+    echo "       --port <p>         Metrics port (default: H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT})."
     echo
     echo "       References can be unix timestamps or labels (order does not matter)."
     echo "       'last' is also usable as a ref. Reserved labels: 'zeroed', 'last'."
@@ -238,7 +244,7 @@ traffic_summary() {
   # when f1 is /dev/null, i.e. a 'zeroed' baseline -> absolute totals).
   awk -v RST="$C_RST" -v BLD="$C_BLD" -v GRN="$C_GRN" -v RED="$C_RED" \
       -v CYN="$C_CYN" -v YLW="$C_YLW" -v MAG="$C_MAG" \
-      -v JSON="$json" -v HDR="$header" -v PORT="$METRICS_PORT" \
+      -v JSON="$json" -v HDR="$header" -v PORT="$H2DIAHLP_METRICS_PORT" \
       -v TS1="$ts1" -v TS2="$ts2" -v F1="$f1" '
     function getlabel(line, key,   re, s) {
       re = key "=\"[^\"]*\""
@@ -382,7 +388,7 @@ help() {
   echo "Usage: help; This help summary."
   echo
   echo "=== Internal Functions And Variables ==="
-  echo "metrics_url: $(metrics_url) (METRICS_PORT=${METRICS_PORT}; SCHEME=${SCHEME}; SERVER_ADDR=${SERVER_ADDR})"
+  echo "metrics_url: $(metrics_url) (H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT}; H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME}; H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR})"
   export -f metrics_url
   echo
   echo "=== Functions ==="
