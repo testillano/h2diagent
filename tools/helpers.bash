@@ -400,8 +400,17 @@ help() {
 # EXECUTION #
 #############
 
-# Check dependencies:
-if ! type curl &>/dev/null; then echo "Missing required dependency (curl) !" ; return 1 ; fi
+# Check dependencies: warn only, do NOT 'return'. The functions are already
+# defined above, so a 'return' here would NOT prevent their use (it only aborts
+# the sourcing shell -- breaking scripts that source this as a library) while
+# giving no real protection: a function needing a missing tool fails on use
+# anyway. So we just warn (to stderr) and keep the library sourceable.
+# h2diagent uses curl (scrapes) and awk (traffic_summary parsing/formatting);
+# it does NOT use jq/python3. Ubiquitous coreutils (sed/grep/sort/date) assumed.
+for _dep in curl awk; do
+  type "${_dep}" &>/dev/null || echo "WARNING: missing dependency '${_dep}' -- some helper functions will fail until it is installed." >&2
+done
+unset _dep
 
 # Show help
 help
