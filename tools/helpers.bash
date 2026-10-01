@@ -85,7 +85,7 @@ traffic_summary() {
 
   # Optional --port <p>. Local (dynamic scope) so recursive calls below inherit
   # it while the caller's H2DIAHLP_METRICS_PORT stays untouched after we return.
-  local H2DIAHLP_METRICS_PORT="${H2DIAHLP_METRICS_PORT}"
+  local H2DIAHLP_METRICS_PORT="${H2DIAHLP_METRICS_PORT:-}"
   local _args=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -381,7 +381,7 @@ traffic_summary() {
 }
 
 help() {
-  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: help; This help summary." && return 0
+  [ "${1:-}" = "-h" -o "${1:-}" = "--help" ] && echo "Usage: help; This help summary." && return 0
   echo
   echo "===== ${PNAME} metric helpers ====="
   echo "Metrics & monitoring: https://github.com/testillano/h2diagent#metrics-and-monitoring"
