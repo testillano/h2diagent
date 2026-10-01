@@ -638,7 +638,7 @@ Histograms provided by diametercomm library:
 
    diameter_client_response_delay_seconds [source] [command_code] [application_id]
       Round-trip latency (seconds) from request sent to correlated answer.
-      Exposes _sum / _count / _bucket (used by traffic_summary for averages).
+      Exposes _sum / _count / _bucket (used by metrics_summary for averages).
 ```
 
 #### Metric labels: `application_id` and optional per-AVP labels
@@ -723,25 +723,25 @@ for `kubectl exec`):
 source tools/helpers.bash   # native (targets localhost:8085 by default)
 
 metrics [port]           # raw Prometheus metrics scraped from h2diagent
-traffic_summary          # Diameter client summary (result-codes, PASS(2001),
+metrics_summary          # Diameter client summary (result-codes, PASS(2001),
                          # latency) with h2agent-like snapshot/delta support
 ```
 
-`traffic_summary` mirrors h2agent's snapshot/delta command line. Diameter
+`metrics_summary` mirrors h2agent's snapshot/delta command line. Diameter
 counters only grow, so it works on **deltas** between two points in time (a
 `zeroed` baseline yields absolute totals):
 
 ```bash
-traffic_summary --now              # live view since start (zeroed -> now)
-traffic_summary --save before      # mark a point
+metrics_summary --now               # live view since start (zeroed -> now)
+metrics_summary --save before       # mark a point
 # ... run traffic ...
-traffic_summary before --now       # delta from the mark to now
-traffic_summary --delta            # incremental delta since the previous call
-traffic_summary --show / --clean   # list / remove saved snapshots
-traffic_summary before after --json   # machine-readable delta
+metrics_summary before --now        # delta from the mark to now
+metrics_summary --delta             # incremental delta since the previous call
+metrics_summary --show / --clean    # list / remove saved snapshots
+metrics_summary before after --json # machine-readable delta
 ```
 
-`metrics` takes an optional `[port]`; `traffic_summary` takes `--port <p>`
+`metrics` takes an optional `[port]`; `metrics_summary` takes `--port <p>`
 (both default to `H2DIAHLP_METRICS_PORT`). Use `-h` for full usage. Override
 targets via `H2DIAHLP_METRICS_PORT`, `H2DIAHLP_SERVER_ADDR`, `H2DIAHLP_SCHEME`
 (h2diagent scrapes with an inline `curl -s`, so there is no CURL override).

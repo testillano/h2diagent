@@ -61,7 +61,7 @@ metrics:
 
 # Mount h2diagent's own helpers (tools/helpers.bash) into the h2diagent
 # container and source them on start (into ~/.bashrc). h2diagent has no admin
-# REST API, so these are metric shortcuts (metrics, traffic_summary) over the
+# REST API, so these are metric shortcuts (metrics, metrics_summary) over the
 # Prometheus endpoint. Set to "" to disable.
 utilsMountPath: /opt/utils
 

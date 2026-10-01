@@ -141,6 +141,6 @@ kubectl exec -it -n $NS $server_pod -c h2agent -- bash
     h2agent tools (`H2AGENT_HELPERS_BASH`, default sibling
     `../testillano_h2agent.master`); if not found, only the port variables load.
   - the `h2diagent` containers load this repo's `tools/helpers.bash` (Diameter
-    metric shortcuts: `metrics`, `traffic_summary`), bound to the gateway's
+    metric shortcuts: `metrics`, `metrics_summary`), bound to the gateway's
     Prometheus port.
   Disable via `h2agent.utilsMountPath=""` / `utilsMountPath=""`.

@@ -62,19 +62,19 @@ metrics() {
   curl -s "$(metrics_url "$1")" 2>/dev/null
 }
 
-# traffic_summary: Diameter client summary (result-codes, PASS(2001), latency)
+# metrics_summary: Diameter client summary (result-codes, PASS(2001), latency)
 # from h2diagent prometheus metrics, with an h2agent-like snapshot/delta command
 # line (--now, --delta, --save, --last, --show, --clean, <ref1> <ref2>, --json).
 # The core is the two-ref "delta mode"; every other mode funnels into it. A
-# 'zeroed' baseline yields absolute totals (live view = "traffic_summary --now").
+# 'zeroed' baseline yields absolute totals (live view = "metrics_summary --now").
 # Latency comes from the diameter_client_response_delay_seconds histogram
 # (_sum/_count); the "By label" table also shows optional additional labels
 # (e.g. cc_request_type) configured via --metrics-additional-label. It also
 # renders a "by label x result-code" cross-tab (e.g. which cc_request_type got
 # which result-code). The metrics port is taken from H2DIAHLP_METRICS_PORT (override
 # with --port). Portable awk.
-traffic_summary() {
-  local snap_dir="/tmp/.h2diagent_traffic_summaries"
+metrics_summary() {
+  local snap_dir="/tmp/.h2diagent_metrics_summaries"
 
   # Colors (disabled if not a terminal)
   local C_RST="" C_BLD="" C_GRN="" C_RED="" C_CYN="" C_YLW="" C_MAG=""
@@ -96,9 +96,11 @@ traffic_summary() {
   set -- "${_args[@]}"
 
   if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    echo "Usage: traffic_summary [-h] [--port <p>] [--show] [--clean] [--json] [<ref1> <ref2>]"
-    echo "       Diameter client traffic summary (result-codes, PASS(2001), latency)"
-    echo "       from h2diagent prometheus metrics, with snapshot/delta support."
+    echo "Usage: metrics_summary [-h] [--port <p>] [--show] [--clean] [--json] [<ref1> <ref2>]"
+    echo "       Metrics counters summary of the h2diagent prometheus endpoint, with"
+    echo "       snapshot/delta support. Covers Diameter client (external), Diameter server"
+    echo "       (inbound), and the internal HTTP/2 legs towards h2agent. Counters only:"
+    echo "       gauges/histograms are dumped in snapshots but not summarised (use Grafana)."
     echo
     echo "       (no args)          Save a counters snapshot labelled with timestamp."
     echo "       --save <label>     Save a snapshot with a label given by user."
@@ -118,9 +120,9 @@ traffic_summary() {
     echo "       'last' is also usable as a ref. Reserved labels: 'zeroed', 'last'."
     echo "       Snapshots: ${snap_dir}/counters.<unix_ts>  Labels: ${snap_dir}/labels"
     echo
-    echo "       Live view since start:  traffic_summary --now"
-    echo "       Test window:            traffic_summary --save before; ...; traffic_summary before --now"
-    echo "       Periodic increments:    while true; do traffic_summary --delta; sleep 60; done"
+    echo "       Live view since start:  metrics_summary --now"
+    echo "       Test window:            metrics_summary --save before; ...; metrics_summary before --now"
+    echo "       Periodic increments:    while true; do metrics_summary --delta; sleep 60; done"
     return 0
   fi
 
@@ -170,7 +172,7 @@ traffic_summary() {
     for a in "$@"; do case "$a" in --last) ;; --json) json_flag="--json" ;; *) last_ref="$a" ;; esac; done
     local resolved=$(_resolve_ref "last")
     if [ -z "$resolved" ]; then echo "No snapshots saved yet."; unset -f _resolve_ref _label_for_ts _fmt_ref; return 0; fi
-    traffic_summary "${last_ref}" last ${json_flag}
+    metrics_summary "${last_ref}" last ${json_flag}
     return $?
   fi
 
@@ -179,8 +181,8 @@ traffic_summary() {
     local json_flag=""; [ "$2" = "--json" ] && json_flag="--json"
     local prev_resolved=$(_resolve_ref "last") prev_ref="zeroed"
     [ -n "$prev_resolved" ] && prev_ref="${prev_resolved##* }"
-    traffic_summary > /dev/null
-    traffic_summary "${prev_ref}" last ${json_flag}
+    metrics_summary > /dev/null
+    metrics_summary "${prev_ref}" last ${json_flag}
     return $?
   fi
 
@@ -197,7 +199,7 @@ traffic_summary() {
     local ts_now=$(date +%s) eph_name=""
     eph_name="${snap_dir}/counters.${ts_now}"
     echo "$m" | grep -E '_counter\{|_gauge\{|_bucket\{|_sum\{|_count\{' > "${eph_name}"
-    traffic_summary "${now_ref}" "${ts_now}" ${now_json}
+    metrics_summary "${now_ref}" "${ts_now}" ${now_json}
     local rc=$?
     rm -f "${eph_name}"
     return $rc
@@ -208,7 +210,7 @@ traffic_summary() {
     local label=""
     if [ "$1" = "--save" ]; then
       label=$2
-      if [ -z "$label" ]; then echo "Usage: traffic_summary --save <label>"; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
+      if [ -z "$label" ]; then echo "Usage: metrics_summary --save <label>"; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
       if [ "$label" = "zeroed" ] || [ "$label" = "last" ]; then echo "Error: '${label}' is a reserved label."; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
     fi
     local m=$(curl -s "$(metrics_url)" 2>/dev/null)
@@ -225,7 +227,7 @@ traffic_summary() {
   # Delta mode: exactly two refs (older first; counters only grow).
   local json="false"; local args=()
   for a in "$@"; do [ "$a" = "--json" ] && json="true" || args+=("$a"); done
-  if [ ${#args[@]} -ne 2 ]; then traffic_summary -h; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
+  if [ ${#args[@]} -ne 2 ]; then metrics_summary -h; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; fi
 
   local resolved1=$(_resolve_ref "${args[0]}")
   [ -z "$resolved1" ] && { echo "Reference '${args[0]}' not found."; unset -f _resolve_ref _label_for_ts _fmt_ref; return 1; }
@@ -316,6 +318,50 @@ traffic_summary() {
       ex = extras($0); key = src SUBSEP app SUBSEP cc SUBSEP ex
       lcount[key] += sgn*$2; seen[key] = 1; totcount += sgn*$2
     }
+    # --- Diameter server (inbound: peer -> h2diagent acting as a Diameter server) ---
+    /^diameter_server_requests_received_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      dsReqRecv[cc] += sgn*$2; dsSeen[cc] = 1; dsReqRecvTot += sgn*$2
+    }
+    /^diameter_server_answers_sent_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      rc = getlabel($0, "result_code"); if (rc == "") rc = "?"
+      dsAnsSent[cc SUBSEP rc] += sgn*$2; dsSeen[cc] = 1; dsAnsSentTot += sgn*$2
+    }
+    # Bidirectional server leg: h2diagent-initiated requests sent on the server leg.
+    /^diameter_server_requests_sent_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      dsReqSent[cc] += sgn*$2; dsSeen[cc] = 1; dsReqSentTot += sgn*$2
+    }
+    /^diameter_server_answers_received_counter/ {
+      cc = getlabel($0, "command_code"); if (cc == "") cc = "?"
+      rc = getlabel($0, "result_code"); if (rc == "") rc = "?"
+      dsAnsRecv[cc SUBSEP rc] += sgn*$2; dsSeen[cc] = 1; dsAnsRecvTot += sgn*$2
+    }
+    # active_peers is a GAUGE (instantaneous, not cumulative): it is still dumped
+    # into the snapshot by the scrape grep, but NOT summarised here -- a delta of a
+    # gauge is not statistically meaningful. Gauges/histograms belong in Grafana.
+    # --- HTTP/2 (internal: h2diagent <-> h2agent) ---
+    /^h2diagent_http2_server_requests_received_counter/ {
+      m = getlabel($0, "method"); if (m == "") m = "?"
+      hsReqRecv[m] += sgn*$2; hsSeen[m] = 1; hsReqRecvTot += sgn*$2
+    }
+    /^h2diagent_http2_server_responses_sent_counter/ {
+      m = getlabel($0, "method"); if (m == "") m = "?"
+      sc = getlabel($0, "status_code"); if (sc == "") sc = "?"
+      hsRespSent[m SUBSEP sc] += sgn*$2; hsSeen[m] = 1; hsRespSentTot += sgn*$2
+      if (sc ~ /^2/) hsOk += sgn*$2; else hsNok += sgn*$2
+    }
+    /^h2diagent_http2_client_requests_sent_counter/ {
+      m = getlabel($0, "method"); if (m == "") m = "?"
+      hcReqSent[m] += sgn*$2; hcSeen[m] = 1; hcReqSentTot += sgn*$2
+    }
+    /^h2diagent_http2_client_responses_received_counter/ {
+      m = getlabel($0, "method"); if (m == "") m = "?"
+      sc = getlabel($0, "status_code"); if (sc == "") sc = "?"
+      hcRespRecv[m SUBSEP sc] += sgn*$2; hcSeen[m] = 1; hcRespRecvTot += sgn*$2
+      if (sc ~ /^2/) hcOk += sgn*$2; else hcNok += sgn*$2
+    }
     END {
       if (JSON == "true") {
         printf "{"
@@ -327,13 +373,19 @@ traffic_summary() {
         printf "\"latency\":{\"count\":%d,\"sum\":%.6f,\"avg\":%.6f,", totcount, totsum, (totcount > 0 ? totsum/totcount : 0)
         printf "\"by_label\":["; fr = 1
         for (k in seen) { c = lcount[k]; if (c <= 0) continue; if (!fr) printf ","; printf "{\"source\":\"%s\",\"application_id\":\"%s\",\"command_code\":\"%s\",\"labels\":\"%s\",\"count\":%d,\"avg\":%.6f}", lsrc[k], lapp[k], lcc[k], lext[k], c, lsum[k]/c; fr = 0 }
-        printf "]}}"
+        printf "]},"
+        # Diameter server (inbound) leg
+        printf "\"diameter_server\":{\"requests_received\":%d,\"answers_sent\":%d,\"requests_sent\":%d,\"answers_received\":%d},", dsReqRecvTot, dsAnsSentTot, dsReqSentTot, dsAnsRecvTot
+        # HTTP/2 internal (towards h2agent)
+        printf "\"http2_internal\":{\"server\":{\"requests_received\":%d,\"responses_sent\":%d,\"responses_2xx\":%d,\"responses_non_2xx\":%d},\"client\":{\"requests_sent\":%d,\"responses_received\":%d,\"responses_2xx\":%d,\"responses_non_2xx\":%d}}", hsReqRecvTot, hsRespSentTot, hsOk, hsNok, hcReqSentTot, hcRespRecvTot, hcOk, hcNok
+        printf "}"
         printf "\n"
         exit
       }
-      printf "%s=== Diameter client traffic summary (h2diagent :%s) ===%s\n", BLD, PORT, RST
+      printf "%s=== Metrics counters summary (h2diagent :%s) ===%s\n", BLD, PORT, RST
+      printf "  %s(counters only; gauges/histograms are instantaneous -- see Grafana for those)%s\n", YLW, RST
       printf "  window: %s\n", HDR
-      printf "\n%s--- Client ---%s\n", CYN, RST
+      printf "\n%s--- Diameter client (external, towards SUT) ---%s\n", CYN, RST
       printf "  Sent:          %d\n", sent
       printf "  Unsent:        %d\n", unsent
       printf "  Received:      %d (2001:%d non-2001:%d)\n", recv, ok, nok
@@ -374,6 +426,46 @@ traffic_summary() {
           printf "      %-12s %-10s %-12s %-30s %-10d %-10.6f\n", lsrc[k], lapp[k], lcc[k] "(" cmdName(lcc[k]) ")", lbl, c, avg
         }
       }
+      # --- Diameter server (inbound: peer -> h2diagent as a Diameter server) ---
+      if (dsReqRecvTot != 0 || dsAnsSentTot != 0 || dsReqSentTot != 0 || dsAnsRecvTot != 0) {
+        printf "\n%s--- Diameter server (inbound, h2diagent as server) ---%s\n", CYN, RST
+        # command-codes seen on the server leg, numerically ordered
+        _dn = 0; for (cc in dsSeen) { _dcs[++_dn] = cc }
+        for (_a = 1; _a <= _dn; _a++) for (_b = _a+1; _b <= _dn; _b++) if ((_dcs[_a]+0) > (_dcs[_b]+0)) { _t = _dcs[_a]; _dcs[_a] = _dcs[_b]; _dcs[_b] = _t }
+        if (dsReqRecvTot != 0) {
+          printf "  Requests received:\n"
+          for (_a = 1; _a <= _dn; _a++) { cc = _dcs[_a]; if (dsReqRecv[cc] == 0) continue; printf "    %-6s %-5s : %d\n", cc, "(" cmdName(cc) ")", dsReqRecv[cc] }
+        }
+        if (dsAnsSentTot != 0) {
+          printf "  Answers sent (by result-code):\n"
+          for (_a = 1; _a <= _dn; _a++) { cc = _dcs[_a]; for (kk in dsAnsSent) { split(kk, a, SUBSEP); if (a[1] != cc || dsAnsSent[kk] == 0) continue; col = (a[2] == "2001") ? GRN : RED; printf "    %-6s %-5s rc=%s%-6s%s : %d\n", a[1], "(" cmdAnsName(a[1]) ")", col, a[2], RST, dsAnsSent[kk] } }
+        }
+        # Bidirectional (server-initiated by h2diagent on the server leg)
+        if (dsReqSentTot != 0) {
+          printf "  Requests sent (server-initiated):\n"
+          for (_a = 1; _a <= _dn; _a++) { cc = _dcs[_a]; if (dsReqSent[cc] == 0) continue; printf "    %-6s %-5s : %d\n", cc, "(" cmdName(cc) ")", dsReqSent[cc] }
+        }
+        if (dsAnsRecvTot != 0) {
+          printf "  Answers received (by result-code):\n"
+          for (_a = 1; _a <= _dn; _a++) { cc = _dcs[_a]; for (kk in dsAnsRecv) { split(kk, a, SUBSEP); if (a[1] != cc || dsAnsRecv[kk] == 0) continue; col = (a[2] == "2001") ? GRN : RED; printf "    %-6s %-5s rc=%s%-6s%s : %d\n", a[1], "(" cmdAnsName(a[1]) ")", col, a[2], RST, dsAnsRecv[kk] } }
+        }
+      }
+      # --- HTTP/2 (internal: h2diagent <-> h2agent) ---
+      if (hsReqRecvTot != 0 || hsRespSentTot != 0 || hcReqSentTot != 0 || hcRespRecvTot != 0) {
+        printf "\n%s--- HTTP/2 (internal, towards h2agent) ---%s\n", CYN, RST
+        if (hsReqRecvTot != 0 || hsRespSentTot != 0) {
+          printf "  Server leg (triggers received from h2agent):\n"
+          for (m in hsSeen) { if (hsReqRecv[m] != 0) printf "    %-6s requests received : %d\n", m, hsReqRecv[m] }
+          for (kk in hsRespSent) { if (hsRespSent[kk] == 0) continue; split(kk, a, SUBSEP); col = (a[2] ~ /^2/) ? GRN : RED; printf "    %-6s responses sent    : %s%s%s : %d\n", a[1], col, a[2], RST, hsRespSent[kk] }
+          if (hsReqRecvTot > 0) printf "    %s2xx: %.1f%% (%d/%d)%s\n", MAG, 100*hsOk/(hsOk+hsNok > 0 ? hsOk+hsNok : 1), hsOk, hsOk+hsNok, RST
+        }
+        if (hcReqSentTot != 0 || hcRespRecvTot != 0) {
+          printf "  Client leg (translations sent to h2agent):\n"
+          for (m in hcSeen) { if (hcReqSent[m] != 0) printf "    %-6s requests sent     : %d\n", m, hcReqSent[m] }
+          for (kk in hcRespRecv) { if (hcRespRecv[kk] == 0) continue; split(kk, a, SUBSEP); col = (a[2] ~ /^2/) ? GRN : RED; printf "    %-6s responses received: %s%s%s : %d\n", a[1], col, a[2], RST, hcRespRecv[kk] }
+          if (hcRespRecvTot != 0) printf "    %s2xx: %.1f%% (%d/%d)%s\n", MAG, 100*hcOk/(hcOk+hcNok > 0 ? hcOk+hcNok : 1), hcOk, hcOk+hcNok, RST
+        }
+      }
     }' "$f1" "$f2"
 
   unset -f _resolve_ref _label_for_ts _fmt_ref
@@ -392,7 +484,7 @@ help() {
   export -f metrics_url
   echo
   echo "=== Functions ==="
-  for f in metrics traffic_summary; do ${f} -h | head -n 1; export -f ${f} ; done
+  for f in metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
   echo
 }
 
@@ -405,7 +497,7 @@ help() {
 # the sourcing shell -- breaking scripts that source this as a library) while
 # giving no real protection: a function needing a missing tool fails on use
 # anyway. So we just warn (to stderr) and keep the library sourceable.
-# h2diagent uses curl (scrapes) and awk (traffic_summary parsing/formatting);
+# h2diagent uses curl (scrapes) and awk (metrics_summary parsing/formatting);
 # it does NOT use jq/python3. Ubiquitous coreutils (sed/grep/sort/date) assumed.
 for _dep in curl awk; do
   type "${_dep}" &>/dev/null || echo "WARNING: missing dependency '${_dep}' -- some helper functions will fail until it is installed." >&2
