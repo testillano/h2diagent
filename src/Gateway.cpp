@@ -272,6 +272,12 @@ void Gateway::start() {
         clientTls.keyPassword = config_.diameterClientKeyPassword;
         peerConfig.tls = clientTls;
 
+        // SCTP single-homing: bind the outbound client to a single local source
+        // address so its INIT advertises only that address (empty = auto-derive
+        // the egress source toward the peer). Prevents advertising non-routable
+        // local interfaces (docker0, bridges) that stall the SCTP handshake.
+        peerConfig.localAddress = config_.diameterClientLocalHost;
+
         diameterClientPool_ = std::make_unique<DiameterClientPool>(
             io_, peerConfig, config_.diameterClientTransport,
             static_cast<std::size_t>(config_.diameterConnections < 1 ? 1 : config_.diameterConnections));

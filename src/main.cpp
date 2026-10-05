@@ -70,6 +70,12 @@ void usage(const char* name) {
         << "                                  (SCTP uses a single association; multi-streaming not\n"
         << "                                  implemented). The peer must accept N connections per\n"
         << "                                  origin-host.\n\n"
+        << "  --diameter-client-local-host <ip>  Local source address to bind the outbound Diameter\n"
+        << "                                  client to. For SCTP this single-homes the association so\n"
+        << "                                  the INIT advertises ONLY this address (avoids non-routable\n"
+        << "                                  local interfaces, e.g. docker0, that stall the handshake in\n"
+        << "                                  COOKIE_WAIT). Default: auto-derive the egress source toward\n"
+        << "                                  the peer. Harmless for TCP (pins the egress source).\n\n"
         << "Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):\n"
         << "  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.\n"
         << "  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS.\n"
@@ -138,6 +144,7 @@ int main(int argc, char* argv[]) {
         {"diameter-server-transport", required_argument, nullptr, 0},
         {"diameter-client-transport", required_argument, nullptr, 0},
         {"diameter-connections", required_argument, nullptr, 0},
+        {"diameter-client-local-host", required_argument, nullptr, 0},
         {"diameter-server-key", required_argument, nullptr, 0},
         {"diameter-server-crt", required_argument, nullptr, 0},
         {"diameter-server-key-password", required_argument, nullptr, 0},
@@ -202,6 +209,8 @@ int main(int argc, char* argv[]) {
                     config.diameterClientTransport = toTransport(norm);
                 } else if (name == "diameter-connections") {
                     config.diameterConnections = std::stoi(optarg);
+                } else if (name == "diameter-client-local-host") {
+                    config.diameterClientLocalHost = optarg;
                 } else if (name == "diameter-server-key")
                     config.diameterServerKeyFile = optarg;
                 else if (name == "diameter-server-crt")
@@ -292,6 +301,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Diameter peer: " << config.diameterPeerHost << ":" << config.diameterPeerPort << std::endl;
         std::cout << "Diameter client transport: " << transportName(config.diameterClientTransport) << std::endl;
         std::cout << "Diameter client connections: " << config.diameterConnections << std::endl;
+        std::cout << "Diameter client local host: "
+                  << (config.diameterClientLocalHost.empty() ? "auto" : config.diameterClientLocalHost) << std::endl;
     }
     std::cout << "Origin-Host: " << config.originHost << std::endl;
     std::cout << "Origin-Realm: " << config.originRealm << std::endl;

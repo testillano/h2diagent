@@ -58,9 +58,10 @@ metrics_url() {
 
 # metrics [port]: raw Prometheus metrics scraped from h2diagent.
 metrics() {
-  [ "$1" = "-h" ] && { echo "metrics [port]: raw Prometheus metrics from h2diagent (default ${H2DIAHLP_METRICS_PORT})."; return 0; }
+  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: metrics [-h|--help]; Prometheus metrics." && return 0
   curl -s "$(metrics_url "$1")" 2>/dev/null
 }
+
 
 # metrics_summary: Diameter client summary (result-codes, PASS(2001), latency)
 # from h2diagent prometheus metrics, with an h2agent-like snapshot/delta command
@@ -475,9 +476,11 @@ metrics_summary() {
 help() {
   [ "${1:-}" = "-h" -o "${1:-}" = "--help" ] && echo "Usage: help; This help summary." && return 0
   echo
-  echo "===== ${PNAME} metric helpers ====="
-  echo "Metrics & monitoring: https://github.com/testillano/h2diagent#metrics-and-monitoring"
+  echo "===== ${PNAME} operation helpers ====="
   echo "Usage: help; This help summary."
+  echo
+  echo "=== Documentation resources ==="
+  echo "Metrics & monitoring: https://github.com/testillano/h2diagent#metrics-and-monitoring"
   echo
   echo "=== Internal Functions And Variables ==="
   echo "metrics_url: $(metrics_url) (H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT}; H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME}; H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR})"

@@ -63,6 +63,20 @@ struct GatewayConfig {
     // pool (TCP only; SCTP + N>1 is rejected at startup). See DiameterClientPool.
     int diameterConnections{1};
 
+    // Local source address to bind the outbound Diameter client to. For SCTP this
+    // single-homes the association so the INIT advertises ONLY this address,
+    // avoiding non-routable local interfaces (docker0, bridges) that would stall
+    // the handshake in COOKIE_WAIT.
+    //   - empty (default): auto-derive the egress source toward the peer (the
+    //     `src` of `ip route get <peer>`), i.e. the address traffic leaves from.
+    //   - set: explicit override to PIN the egress address. Use it to force a
+    //     specific interface when the default route reaches the peer by a path it
+    //     does not answer (asymmetric routing, or a VIP reachable only via one
+    //     interface) -- handy to trial-and-error a working source until the right
+    //     route is found. The address must be local and able to egress to the peer.
+    // Harmless for TCP (pins the egress source; no multihoming involved).
+    std::string diameterClientLocalHost;
+
     // Diameter TLS/TCP security (Phase 1). NOTE: SCTP is NOT secured (DTLS/SCTP
     // out of scope -- see README "gap"): TLS options are ignored on SCTP.
     // Server (inbound): TLS is enabled when BOTH key and crt are provided
