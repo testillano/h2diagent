@@ -158,9 +158,10 @@ class Gateway {
                             bool fromClient, diametercomm::DiameterClient* originatingClient);
 
     // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to Server
-    void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
-                                  const nghttp2::asio_http2::header_map& headers,
-                                  std::function<void(int, const std::string&)> respond);
+    void onH2agentOutboundRequest(
+        const std::string& method, const std::string& uri, const std::string& body,
+        const nghttp2::asio_http2::header_map& headers,
+        std::function<void(int, const std::string&, const nghttp2::asio_http2::header_map&)> respond);
 
     // (Re)connect the HTTP/2 client to h2agent. Creates a fresh nghttp2 session.
     // Must run on the h2clientIo_ thread (the only thread that mutates the session).

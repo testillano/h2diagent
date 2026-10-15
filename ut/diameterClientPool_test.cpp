@@ -145,3 +145,43 @@ TEST_F(DiameterClientPool_test, ZeroConnectionsClampedToOne) {
     DiameterClientPool pool(io_, clientConfig(), Transport::TCP, /*connections=*/0);
     EXPECT_EQ(pool.size(), 1u);
 }
+
+// --- Peer-down gate behind the 502 Bad Gateway response ---------------------
+//
+// Gateway::onH2agentOutboundRequest decides to fail fast with 502 Bad Gateway
+// (instead of blocking/dropping the POST) exactly when there is no open Diameter
+// peer to the stack, i.e. when `!diameterClientPool_ || !diameterClientPool_->anyReady()`
+// (and, as a race guard, when pickReady() yields nullptr). These tests lock that
+// predicate for the two peer-down conditions that trigger the 502 at runtime:
+// "peer never came up" and "peer dropped mid-session". The full HTTP response
+// assertion (status 502 + x-diameter-peer-state header) is covered at
+// component/integration level, since the handler needs the HTTP/2 server stack.
+
+TEST_F(DiameterClientPool_test, BadGatewayGate_PeerNeverUp) {
+    // Peer never established: the 502 gate (!anyReady() && pickReady()==nullptr) holds.
+    DiameterClientPool pool(io_, clientConfig(), Transport::TCP, 2);
+    pool.setReconnectEnabled(false);
+    EXPECT_FALSE(pool.anyReady());         // -> gateway would answer 502
+    EXPECT_EQ(pool.pickReady(), nullptr);  // -> race-guard branch would also answer 502
+}
+
+TEST_F(DiameterClientPool_test, BadGatewayGate_PeerDroppedMidSession) {
+    // Peer established and then dropped (ASR/watchdog loss/stack restart): once the
+    // connections are gone, the same 502 gate holds again for new requests.
+    DiameterServer server(io_, serverConfig());
+    server.listen("127.0.0.1", 15905);
+
+    DiameterClientPool pool(io_, clientConfig(), Transport::TCP, 2);
+    pool.setReconnectEnabled(false);
+    pool.connectAll("127.0.0.1", 15905);
+    runFor(std::chrono::milliseconds(600));
+    ASSERT_TRUE(pool.anyReady());  // peer up: requests flow normally (no 502)
+
+    // Peer goes away:
+    pool.disconnectAll(0);
+    runFor(std::chrono::milliseconds(400));
+    EXPECT_FALSE(pool.anyReady());  // -> gateway would now answer 502
+    EXPECT_EQ(pool.pickReady(), nullptr);
+
+    server.close();
+}

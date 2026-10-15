@@ -44,6 +44,30 @@ It translates Diameter messages to/from JSON over HTTP/2, allowing h2agent's ful
 3. SUT responds with Diameter answer
 4. h2diagent maps answer to JSON and returns HTTP/2 response to h2agent
 
+### Fail-fast when the Diameter peer is down (`502 Bad Gateway`)
+
+If an outbound `POST /diameter/<interface>/<command>` arrives while h2diagent has
+**no open Diameter peer** to the stack (e.g. right after a fresh deploy, while the
+peer connection is still being (re)established, or after the peer dropped), the
+gateway does **not** block the request or drop it silently. It responds immediately
+with:
+
+- **`502 Bad Gateway`** — the gateway-to-upstream failure code (there is no usable
+  Diameter path to send the request on). `503` is intentionally reserved for the
+  gateway's own overload, and `504` for an in-flight answer timeout; `502` here means
+  "no usable peer at all, nothing was sent".
+- Header **`x-diameter-peer-state: closed`** — a diagnostic hint reporting the peer
+  condition that caused the refusal, so the caller knows *why* without reading gateway
+  logs. The JSON body mirrors it (`{"error":"Diameter peer not connected","peerState":"closed"}`).
+
+The gateway is **policy-free** here: it only reports. It does **not** retry on behalf
+of the client, does **not** buffer the request, and — deliberately — does **not** emit
+an authoritative `Retry-After` header or any back-off hint. The retry/abort policy is
+left entirely to the client (the h2agent director that issued the POST), which can
+react to the `502` in its `client-provision` as it sees fit (retry with its own
+back-off, give up with a verdict, or escalate). This keeps the gateway generic and the
+behaviour per-flow explicit, giving the client full freedom over timing.
+
 ## Diameter <-> JSON mapping
 
 This section describes how each Diameter AVP **data format** is represented in

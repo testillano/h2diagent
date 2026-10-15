@@ -373,11 +373,13 @@ void Gateway::start() {
                     }
                     onH2agentOutboundRequest(
                         *method, *uri, *body, *headers,
-                        [this, &res, serverIo, method, closed](int statusCode, const std::string& responseBody) {
+                        [this, &res, serverIo, method, closed](int statusCode, const std::string& responseBody,
+                                                               const nghttp2::asio_http2::header_map& extraHeaders) {
                             // This may run on a foreign (Diameter client) thread. Marshal the
                             // response write onto the HTTP/2 server stream's io_service, where
                             // on_close is also serialized, then re-check the closed flag.
-                            boost::asio::post(*serverIo, [this, &res, method, closed, statusCode, responseBody]() {
+                            boost::asio::post(*serverIo, [this, &res, method, closed, statusCode, responseBody,
+                                                          extraHeaders]() {
                                 if (closed->load()) {
                                     return;  // stream already closed: do not touch res
                                 }
@@ -390,6 +392,7 @@ void Gateway::start() {
                                 }
                                 nghttp2::asio_http2::header_map h;
                                 h.emplace("content-type", nghttp2::asio_http2::header_value{"application/json", false});
+                                for (const auto& kv : extraHeaders) h.emplace(kv.first, kv.second);
                                 res.write_head(statusCode, h);
                                 res.end(responseBody);
                             });
@@ -786,9 +789,10 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
 // ============================================================================
 // onH2agentOutboundRequest - Outbound: h2agent -> JSON -> Diameter -> Server
 // ============================================================================
-void Gateway::onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
-                                       const nghttp2::asio_http2::header_map& headers,
-                                       std::function<void(int, const std::string&)> respond) {
+void Gateway::onH2agentOutboundRequest(
+    const std::string& method, const std::string& uri, const std::string& body,
+    const nghttp2::asio_http2::header_map& headers,
+    std::function<void(int, const std::string&, const nghttp2::asio_http2::header_map&)> respond) {
     LOGINFORMATIONAL(ert::tracing::Logger::informational(
         ert::tracing::Logger::asString("Outbound trigger: %s %s (%zu bytes)", method.c_str(), uri.c_str(), body.size()),
         ERT_FILE_LOCATION));
@@ -796,12 +800,19 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
     if (!diameterClientPool_ || !diameterClientPool_->anyReady()) {
         LOGWARNING(
             ert::tracing::Logger::warning("Diameter client not connected for outbound request", ERT_FILE_LOCATION));
-        respond(503, R"({"error":"Diameter peer not connected"})");
+        // Gateway-to-upstream failure: no open Diameter peer to the stack. Fail fast with
+        // 502 Bad Gateway (502 = upstream unreachable; 503 is reserved for the gateway's
+        // own overload). The x-diameter-peer-state header reports the cause so the director
+        // can react. The gateway stays policy-free: it does NOT emit any authoritative
+        // Retry-After hint; the retry/abort policy belongs entirely to the client flow.
+        nghttp2::asio_http2::header_map peerDownHeaders;
+        peerDownHeaders.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+        respond(502, R"({"error":"Diameter peer not connected","peerState":"closed"})", peerDownHeaders);
         return;
     }
 
     if (body.empty()) {
-        respond(400, R"({"error":"Empty request body"})");
+        respond(400, R"({"error":"Empty request body"})", {});
         return;
     }
 
@@ -908,7 +919,11 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
         if (!client) {
             LOGWARNING(ert::tracing::Logger::warning("No ready Diameter connection in the pool for outbound request",
                                                      ERT_FILE_LOCATION));
-            respond(503, R"({"error":"Diameter peer not connected"})");
+            // Same peer-down condition as above (readiness lost between the entry check and
+            // picking a connection): fail fast with 502 + diagnostic header, policy-free.
+            nghttp2::asio_http2::header_map peerDownHeaders;
+            peerDownHeaders.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+            respond(502, R"({"error":"Diameter peer not connected","peerState":"closed"})", peerDownHeaders);
             return;
         }
         client->send(
@@ -927,13 +942,13 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
                         ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
                         ERT_FILE_LOCATION));
 
-                    respond(200, respStr);
+                    respond(200, respStr, {});
 
                 } catch (const std::exception& e) {
                     LOGWARNING(ert::tracing::Logger::warning(
                         ert::tracing::Logger::asString("Failed to decode Diameter answer: %s", e.what()),
                         ERT_FILE_LOCATION));
-                    respond(502, R"({"error":"Failed to decode Diameter answer"})");
+                    respond(502, R"({"error":"Failed to decode Diameter answer"})", {});
                 }
             },
             config_.diameterTimeoutMs, additionalLabels);
@@ -941,7 +956,7 @@ void Gateway::onH2agentOutboundRequest(const std::string& method, const std::str
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
             ert::tracing::Logger::asString("Failed to parse outbound JSON: %s", e.what()), ERT_FILE_LOCATION));
-        respond(400, std::string(R"({"error":"Invalid JSON: )") + e.what() + "\"}");
+        respond(400, std::string(R"({"error":"Invalid JSON: )") + e.what() + "\"}", {});
     }
 }
 
