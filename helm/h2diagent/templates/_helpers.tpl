@@ -38,3 +38,28 @@ Whether this peer runs a Diameter listener (server or both, with a non-zero port
 true
 {{- end -}}
 {{- end }}
+
+{{/*
+Effective "brain" (companion h2agent) host the gateway should dial, or empty.
+  - sidecar  (h2agent.enabled=true)                 -> localhost
+  - external (enabled=false + h2agent.host set)     -> that host
+  - none     (enabled=false + h2agent.host empty)   -> "" (no brain)
+*/}}
+{{- define "h2diagent.brainHost" -}}
+{{- if .Values.h2agent.enabled -}}
+localhost
+{{- else -}}
+{{- .Values.h2agent.host -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Effective "brain" port (traffic port of the companion h2agent).
+*/}}
+{{- define "h2diagent.brainPort" -}}
+{{- if .Values.h2agent.enabled -}}
+{{- .Values.h2agent.trafficPort -}}
+{{- else -}}
+{{- .Values.h2agent.port -}}
+{{- end -}}
+{{- end }}

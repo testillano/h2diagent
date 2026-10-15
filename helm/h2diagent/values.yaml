@@ -1,8 +1,26 @@
 # Default values for the h2diagent chart.
 #
-# Deploys a single Diameter peer as one pod with two containers:
-#   - h2diagent : Diameter <-> HTTP/2 translation gateway
-#   - h2agent   : HTTP/2 mock (the "brain"), sidecar reached over localhost
+# h2diagent is a PURE Diameter <-> HTTP/2 TRANSLATOR. By default it is deployed
+# as a single container: it has no embedded "programming engine" (no provisioning
+# brain). That engine lives in a separate h2agent, and whether an h2agent needs to
+# accompany the gateway depends on the role the gateway plays:
+#
+#   * Diameter SERVER (PCRF-like): on inbound Diameter the gateway must DECIDE the
+#     answer, so it needs a "brain". That brain is an h2agent acting as a MOCK,
+#     reached over localhost -> co-locating it as a sidecar in THIS pod is natural
+#     and is the only case that justifies the companion container
+#     (set h2agent.enabled=true).
+#
+#   * Diameter CLIENT / pure translator: the gateway only forwards an external
+#     director's HTTP/2 into outbound Diameter and relays the real answer back.
+#     There is NO inbound to answer, so NO companion h2agent is needed here. The
+#     flow is driven by a DIRECTOR (an h2agent in CLIENT role) that coordinates
+#     HYBRID flows (HTTP/2 steps that never touch the gateway, plus Diameter steps
+#     that do). Because the director's scope exceeds the gateway, its natural home
+#     is an EXTERNAL pod, NOT a sidecar of this chart.
+#
+# Hence the default below is h2agent.enabled=false (pure translator). Enable it
+# only for the server/PCRF (mock-brain) case. See README for the full rationale.
 #
 # A peer plays a Diameter "role":
 #   server -> h2diagent listens for inbound Diameter (diameter.serverPort)
@@ -65,8 +83,24 @@ metrics:
 # Prometheus endpoint. Set to "" to disable.
 utilsMountPath: /opt/utils
 
-# h2agent sidecar (the mock brain), reached by h2diagent over localhost.
+# Companion h2agent "brain".
+#
+# enabled=false (default): pure translator, single-container gateway. No sidecar.
+#   - If 'host' below is set, the gateway dials that EXTERNAL h2agent (another
+#     pod) as its brain; if left empty, the gateway runs without a brain
+#     (fine for a pure Diameter CLIENT / translator, which has no inbound to
+#     answer).
+# enabled=true: run the h2agent as a SIDECAR in this pod (the mock-brain case for
+#   a Diameter SERVER). The gateway dials it over localhost.
 h2agent:
+  enabled: false
+  # Host/port the gateway dials for its brain.
+  #   - sidecar mode (enabled=true): forced to localhost:trafficPort.
+  #   - external mode (enabled=false + host set): a Service DNS name of an
+  #     h2agent living in another pod.
+  #   - no brain (enabled=false + host empty): --h2agent-host is not passed.
+  host: ""
+  port: 8000
   image:
     repository: ghcr.io/testillano/h2agent
     tag: latest
@@ -80,7 +114,7 @@ h2agent:
   # container start (into ~/.bashrc), mirroring the default h2agent chart. Set
   # to "" to disable. The functions come from native-helpers.bash, bundled by
   # ct/test.sh from the h2agent tools; if absent, only the port variables and
-  # convenience settings are provided.
+  # convenience settings are provided. Only used when enabled=true (sidecar).
   utilsMountPath: /opt/utils
 
 service:

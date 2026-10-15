@@ -6,12 +6,13 @@ metadata:
     {{- include "h2diagent.labels" . | nindent 4 }}
   annotations:
     prometheus.io/path: metrics
-    prometheus.io/port: {{ .Values.h2agent.prometheusPort | quote }}
+    prometheus.io/port: {{ (.Values.h2agent.enabled | ternary .Values.h2agent.prometheusPort .Values.prometheusPort) | quote }}
     prometheus.io/scrape: {{ .Values.metrics.enabled | quote }}
 spec:
   type: {{ .Values.service.type }}
   ports:
-    # --- h2agent (mock brain) ---
+    # --- h2agent (mock brain) --- only when the sidecar is enabled
+    {{- if .Values.h2agent.enabled }}
     - port: {{ .Values.h2agent.adminPort }}
       targetPort: {{ .Values.h2agent.adminPort }}
       protocol: TCP
@@ -24,7 +25,13 @@ spec:
       targetPort: {{ .Values.h2agent.prometheusPort }}
       protocol: TCP
       name: http-metrics
+    {{- end }}
     # --- h2diagent (gateway) ---
+    # HTTP/2 server where an (external) director posts outbound triggers.
+    - port: {{ .Values.http2ServerPort }}
+      targetPort: {{ .Values.http2ServerPort }}
+      protocol: TCP
+      name: http2-trigger
     {{- if include "h2diagent.hasServer" . }}
     - port: {{ .Values.diameter.serverPort }}
       targetPort: {{ .Values.diameter.serverPort }}

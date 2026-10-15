@@ -25,7 +25,7 @@ spec:
           configMap:
             name: {{ include "h2diagent.name" . }}-h2diagent-helpers
         {{- end }}
-        {{- if .Values.h2agent.utilsMountPath }}
+        {{- if and .Values.h2agent.enabled .Values.h2agent.utilsMountPath }}
         - name: {{ include "h2diagent.name" . }}-h2agent-helpers
           configMap:
             name: {{ include "h2diagent.name" . }}-h2agent-helpers
@@ -34,7 +34,7 @@ spec:
         # ---------------------------------------------------------------------
         # h2diagent: Diameter <-> HTTP/2 translation gateway
         # ---------------------------------------------------------------------
-        - name: h2diagent
+        - name: {{ include "h2diagent.name" . }}-h2diagent
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
@@ -48,9 +48,9 @@ spec:
             {{- end }}
           # h2diagent connects to its dependencies once at startup and does not
           # currently reconnect. To make startup deterministic in Kubernetes
-          # (pod/container ordering is not guaranteed), wait for the local
-          # h2agent sidecar and (for a client) the remote Diameter peer to be
-          # listening before exec'ing the gateway. Uses bash /dev/tcp (no nc).
+          # (pod/container ordering is not guaranteed), wait for the companion
+          # h2agent "brain" (if any) and (for a client) the remote Diameter peer
+          # to be listening before exec'ing the gateway. Uses bash /dev/tcp (no nc).
           command:
             - /bin/bash
             - -c
@@ -66,7 +66,10 @@ spec:
                 done
                 echo "[wait] timeout waiting for $host:$port" >&2; return 1
               }
-              wait_tcp 127.0.0.1 {{ .Values.h2agent.trafficPort }} || exit 1
+              {{- $brainHost := include "h2diagent.brainHost" . }}
+              {{- if $brainHost }}
+              wait_tcp {{ $brainHost | quote }} {{ include "h2diagent.brainPort" . }} || exit 1
+              {{- end }}
               {{- if and (or (eq .Values.role "client") (eq .Values.role "both")) (ne .Values.diameter.peerHost "") }}
               wait_tcp {{ .Values.diameter.peerHost | quote }} {{ .Values.diameter.peerPort }} || exit 1
               {{- end }}
@@ -104,10 +107,13 @@ spec:
             - {{ .Values.diameter.serverTransport | quote }}
             - "--diameter-client-transport"
             - {{ .Values.diameter.clientTransport | quote }}
+            {{- $brainHost := include "h2diagent.brainHost" . }}
+            {{- if $brainHost }}
             - "--h2agent-host"
-            - "localhost"
+            - {{ $brainHost | quote }}
             - "--h2agent-port"
-            - {{ .Values.h2agent.trafficPort | quote }}
+            - {{ include "h2diagent.brainPort" . | quote }}
+            {{- end }}
             - "--http2-server-port"
             - {{ .Values.http2ServerPort | quote }}
             {{- if .Values.metrics.enabled }}
@@ -144,9 +150,13 @@ spec:
                   - echo "source '{{ .Values.utilsMountPath }}/helpers.bash'" >> ~/.bashrc
           {{- end }}
         # ---------------------------------------------------------------------
-        # h2agent sidecar: HTTP/2 mock brain (reached over localhost)
+        # h2agent sidecar: HTTP/2 mock brain (reached over localhost).
+        # Only present when h2agent.enabled=true (the Diameter SERVER / mock-brain
+        # case). By default the gateway is a pure translator and this container is
+        # absent.
         # ---------------------------------------------------------------------
-        - name: h2agent
+        {{- if .Values.h2agent.enabled }}
+        - name: {{ include "h2diagent.name" . }}-h2agent
           image: "{{ .Values.h2agent.image.repository }}:{{ .Values.h2agent.image.tag }}"
           imagePullPolicy: {{ .Values.h2agent.image.pullPolicy }}
           {{- if .Values.h2agent.utilsMountPath }}
@@ -195,3 +205,4 @@ spec:
                   - -c
                   - echo "source '{{ .Values.h2agent.utilsMountPath }}/helpers.bash'" >> ~/.bashrc
           {{- end }}
+        {{- end }}

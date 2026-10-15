@@ -1,8 +1,21 @@
 # Component test wrapper for h2diagent.
 #
-# Deploys two Diameter peers (each = h2diagent + h2agent sidecar) plus a test
-# pod running pytest. The client peer dials the server peer's Diameter port
-# using the Kubernetes Service DNS name "server".
+# Deploys two Diameter peers plus a test pod running pytest. Each peer runs as a
+# MONOPOD (h2diagent + h2agent sidecar, h2agent.enabled=true) -- note this is a
+# CT convenience, NOT the chart default (the base h2diagent is a pure translator
+# with no companion). The co-located h2agent plays a DIFFERENT role on each peer:
+#
+#   * server peer: the h2agent is the MOCK brain. The server h2diagent is a
+#     Diameter SERVER; on inbound CCR it asks this local mock (over localhost) to
+#     decide the CCA. This is the role that genuinely justifies the sidecar.
+#
+#   * client peer: the h2agent is the DIRECTOR. It DRIVES the flow (triggers the
+#     CCR) and posts it to the client h2diagent for translation. Conceptually a
+#     director coordinates HYBRID HTTP/2+Diameter flows and its natural home is an
+#     EXTERNAL pod; it is co-located here only as a CT convenience (localhost),
+#     because this CT exercises a single Diameter hop.
+#
+# The client peer dials the server peer's Diameter port via Service DNS "server".
 
 # Pytest runner pod.
 test:
@@ -24,6 +37,7 @@ initContainer:
 # ---------------------------------------------------------------------------
 # server peer (Diameter listener / PCRF-like). Values feed the h2diagent
 # subchart (alias "server") and are also read by this chart's test deployment.
+# h2agent.enabled=true -> co-located MOCK brain (answers inbound CCR).
 # ---------------------------------------------------------------------------
 server:
   nameOverride: server
@@ -35,11 +49,13 @@ server:
   diameter:
     serverPort: 3868
   h2agent:
+    enabled: true
     adminPort: 8074
     trafficPort: 8000
 
 # ---------------------------------------------------------------------------
 # client peer (Diameter dialer / PGW-like). Dials "server:3868".
+# h2agent.enabled=true -> co-located DIRECTOR (drives/triggers the CCR).
 # ---------------------------------------------------------------------------
 client:
   nameOverride: client
@@ -54,5 +70,6 @@ client:
     peerPort: 3868
   http2ServerPort: 8081
   h2agent:
+    enabled: true
     adminPort: 8074
     trafficPort: 8000

@@ -8,7 +8,7 @@ chart. Provides:
 Mounted at .Values.h2agent.utilsMountPath and sourced into ~/.bashrc via the
 sidecar postStart hook.
 */}}
-{{- if .Values.h2agent.utilsMountPath }}
+{{- if and .Values.h2agent.enabled .Values.h2agent.utilsMountPath }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
