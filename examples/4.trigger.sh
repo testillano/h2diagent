@@ -10,5 +10,5 @@ DEPLOY_DIR="${SCRIPT_DIR}/deployment"
 source "${DEPLOY_DIR}/config.bash"
 
 echo "Trigger: ${TRIGGER}"
-curl -sf --http2-prior-knowledge "${TRIGGER}"
+curl -sf --http2-prior-knowledge -XPOST "${TRIGGER}"
 echo ""

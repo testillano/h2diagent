@@ -68,6 +68,51 @@ react to the `502` in its `client-provision` as it sees fit (retry with its own
 back-off, give up with a verdict, or escalate). This keeps the gateway generic and the
 behaviour per-flow explicit, giving the client full freedom over timing.
 
+### Every outbound request gets an HTTP/2 answer
+
+The gateway always completes the HTTP/2 stream of an outbound request, so the
+director never waits for its own client timeout (h2agent `responseStatusCode -2`):
+
+| Status | Body | When |
+|--------|------|------|
+| `200` | answer JSON (AVPs + `_header`) | Diameter answer received and decoded |
+| `400` | `{"error":"Invalid JSON: ..."}` / `{"error":"Invalid _raw: ..."}` | body cannot be parsed or encoded (e.g. unknown AVP name) |
+| `502` | `{"error":"Diameter peer not connected","peerState":"closed"}` + `x-diameter-peer-state: closed` | no open Diameter peer (see above) |
+| `502` | `{"error":"Diameter send failed"}` (+ `x-diameter-peer-state: closed` if the peer is down) | the connection refused the write |
+| `502` | `{"error":"Failed to decode Diameter answer","_raw":"<hex>","_decodeError":"...","_header":{...}}` | the answer arrived but is malformed |
+| `504` | `{"error":"Diameter answer timeout","hopByHop":"0x...","timeoutMs":N}` | no answer within `--diameter-timeout-ms` |
+
+Error bodies are always valid JSON (exception texts are escaped).
+
+Inbound requests (peer -> h2agent) are always answered too: when h2agent is not
+reachable, answers non-200, times out, or returns a body that cannot be encoded,
+the gateway sends `DIAMETER_UNABLE_TO_COMPLY` (5012), echoing the request
+`Session-Id`.
+
+## Answer correlation
+
+An outbound request is correlated with its answer by **hop-by-hop** on the
+connection that sent it. Two fallbacks cover stacks that do not return the
+answer exactly there:
+
+- **End-to-end fallback.** RFC 6733 keeps the End-to-End Identifier unchanged
+  along the path (relays rewrite and restore only the hop-by-hop). If no pending
+  transaction has the answer hop-by-hop (or the command code differs), the
+  end-to-end is used. The gateway assigns a node-wide unique end-to-end to every
+  request, so it is a safe key. The command code must always match.
+- **Cross-leg / cross-connection.** The gateway has a client leg (it dials the
+  peer) and a server leg (the peer dials it), both with the same Origin-Host.
+  For the stack this is one peer with several connections, and it may send an
+  answer on any of them (e.g. a deferred STA on the connection it opened for
+  RAR/ASR). An answer that misses on its connection is tried on the other pooled
+  client connections and on the other leg before being dropped.
+
+An answer that matches nothing (late after a timeout, duplicated, or unknown)
+is **dropped and logged at Warning** (leg, command, application, hop-by-hop,
+end-to-end). It is **never** forwarded to h2agent as if it were a request.
+See the `*_answers_uncorrelated_counter` and `*_answers_recovered_counter`
+metrics.
+
 ## Diameter <-> JSON mapping
 
 This section describes how each Diameter AVP **data format** is represented in
@@ -187,6 +232,19 @@ use**. They are not required on the response: the gateway does not read the
 HTTP/2 response headers, because it rebuilds the answer header from the
 correlated request as described above.
 
+### AVP order on the wire
+
+JSON objects have no order (h2agent serializes keys alphabetically), so the
+gateway encodes AVPs in the **dictionary command order** (the command ABNF:
+fixed AVPs such as `< Session-Id >` first, then the rules as declared), at
+message level and inside Grouped AVPs. AVPs not covered by any rule (including
+raw `avp-<code>` ones) go last; repeated AVPs keep their JSON array order. If
+the dictionary has no rules for the command, the JSON order is kept.
+
+> The dictionary must flag request commands with `"r-bit": true` (requests and
+> answers share the command code). Without it the request rules are not found
+> and no reordering happens. The bundled `tools/stacks/*.json` include it.
+
 ### Per-format table (the 16 base/derived formats)
 
 | Diameter format   | JSON type | Example (JSON)                         | On-the-wire meaning |
@@ -282,6 +340,65 @@ numbers for integer/unsigned/float/enum, human text for the text formats, UNIX
 epoch for Time, hex for OctetString, and nested objects/arrays for Grouped. The
 engine encodes to the normative Diameter wire bytes according to that format.
 
+## Negative testing
+
+The codec does not enforce command rules or value ranges, so many negative
+cases need nothing special:
+
+| Case | How | Typical SUT result |
+|------|-----|--------------------|
+| Missing mandatory AVP | omit the key | 5005 MISSING_AVP |
+| AVP not allowed / extra AVP | add any dictionary AVP | 5008 / ignored |
+| Too many occurrences | JSON array with N elements | 5009 |
+| Invalid value (enum out of range, bad text) | write the value | 5004 |
+| Wrong header (application-id, command-code, version, E/P/T flags) | complete `_header` | 3007, 3001, 5011 ... |
+| Error answer from the mock | `Result-Code` / `Experimental-Result` (+ E-bit in `_header`) | SUT error handling |
+| No answer from the mock | provision delay above the SUT timeout | SUT timeout handling |
+
+For what the dictionary format cannot express, two raw hooks exist:
+
+**Raw AVP: `avp-<code>` / `avp-<code>-<vendor>` keys** (any level, also inside
+Grouped). These are the names the decoder already emits for unknown AVPs, so an
+inbound unknown AVP can be echoed back. The data is encoded verbatim:
+
+```json
+"avp-99999": "0000000a",                          // unknown AVP, no flags
+"avp-416": { "hex": "0001", "flags": 0 },         // known AVP, 2-byte data, M-bit off
+"avp-1027-10415": { "hex": "00000001", "flags": 192 }
+```
+
+- string value: hex of the data bytes; flags = V-bit when a vendor is given.
+- object value: `hex` plus optional `flags` (full AVP flags byte, 0..255; the
+  V-bit decides whether the Vendor-Id is written).
+- The AVP length is computed from the data and padding is added as usual.
+
+Covers unknown AVPs (5001 with M-bit set), wrong flags, wrong data length
+(5014 INVALID_AVP_LENGTH) and invalid encodings (5004).
+
+**Raw message: `_raw` key** (hex of the whole Diameter message), in a
+client-provision request body or in a server-provision answer. All other keys
+are ignored and the bytes are sent verbatim, except a hop-by-hop / end-to-end
+equal to 0, which is filled as usual (the client assigns it for requests; the
+request ids are used for answers) so correlation keeps working. At least the
+20-byte header is required (otherwise `400`).
+
+```json
+{ "_raw": "0100002c800001100100001600000000000000000000010740..." }
+```
+
+> Warning: a message length that does not match the bytes breaks TCP framing
+> for the whole connection (the peer waits for more bytes or reads garbage).
+> Use it at the end of a test, and expect the peer to answer 5015
+> INVALID_MESSAGE_LENGTH or close the connection.
+
+**Malformed inbound messages.** When an inbound request cannot be decoded, it
+is still POSTed to h2agent on the usual URI with the body
+`{"_raw":"<hex>","_decodeError":"<reason>","_header":{...}}` (the header is
+read from the first 20 bytes). The provision decides the answer, e.g. a 5014
+via `_raw` or plain JSON. Without a matching provision the usual 5012 applies.
+Malformed answers to outbound requests are reported the same way inside the
+`502` body (see above).
+
 ## Dependencies
 
 | Component | Repository |
@@ -308,27 +425,28 @@ $ docker build --target deps      -t h2diagent_builder .
 $ docker build --target unit-test -t h2diagent_ut .
 ```
 
-### Building against a local (unpublished) diametercomm
+### Building against a local (unpublished) diametercomm / diametercodec
 
-By default the `deps` stage downloads the released `diametercomm`
-(`ert_diametercomm_ver` in the `Dockerfile`). To iterate on **unpublished**
-`diametercomm` changes (e.g. before pushing/tagging a new version), inject your
-local working tree into the build:
+By default the `deps` stage downloads the released `diametercomm` and
+`diametercodec` (`ert_diametercomm_ver` / `ert_diametercodec_ver` in the
+`Dockerfile`). To iterate on **unpublished** library changes (e.g. before
+pushing/tagging a new version), inject your local working trees into the build:
 
 ```bash
-# From the h2diagent repo root. Re-run whenever diametercomm changes.
-$ rsync -a --delete \
-    --exclude='.git' --exclude='build' --exclude='CMakeCache.txt' --exclude='CMakeFiles' \
-    /path/to/testillano_diametercomm.master/ deps-local/diametercomm/
+# From the h2diagent repo root. Re-run whenever a library changes.
+$ for lib in diametercomm diametercodec; do
+    rsync -a --delete \
+      --exclude='.git' --exclude='build' --exclude='CMakeCache.txt' --exclude='CMakeFiles' \
+      /path/to/testillano_${lib}.master/ deps-local/${lib}/
+  done
 
-$ ./build.sh --image   # log shows ">>> Using LOCAL diametercomm source"
+$ ./build.sh --image   # log shows ">>> Using LOCAL diametercomm source" (and diametercodec)
 ```
 
-If `deps-local/diametercomm/CMakeLists.txt` is present the `deps` stage builds
-that source instead of the released tarball; otherwise it falls back to
-`ert_diametercomm_ver`, so canonical/CI builds are unaffected. `deps-local/` is
-git-ignored. Once your `diametercomm` change is published, remove
-`deps-local/diametercomm` and bump `ert_diametercomm_ver` to the new version.
+If `deps-local/<lib>/CMakeLists.txt` is present the `deps` stage builds that
+source instead of the released tarball; otherwise it falls back to the released
+version, so canonical/CI builds are unaffected. `deps-local/` is git-ignored.
+Once your change is published, remove `deps-local/<lib>` and bump the version.
 
 ## Unit tests
 
@@ -630,6 +748,8 @@ Counters provided by diametercomm library:
 
    diameter_server_requests_sent_counter [source] [command_code] [application_id]
    diameter_server_answers_received_counter [source] [command_code] [application_id] [result_code]
+   diameter_server_answers_uncorrelated_counter [source] [command_code] [application_id]
+   diameter_server_answers_recovered_counter [source] [command_code] [application_id] [by] [path]
 
 Gauges provided by diametercomm library:
 
@@ -645,6 +765,10 @@ Counters provided by diametercomm library:
    diameter_client_answers_received_counter [source] [command_code] [application_id] [result_code]
    diameter_client_requests_timedout_counter [source] [command_code] [application_id]
    diameter_client_requests_unsent_counter [source] [command_code] [application_id]
+   diameter_client_answers_uncorrelated_counter [source] [command_code] [application_id]
+      Answers dropped because no pending transaction matches on any connection/leg.
+   diameter_client_answers_recovered_counter [source] [command_code] [application_id] [by: hbh/e2e] [path: same-leg/cross-leg]
+      Answers correlated by end-to-end and/or received on another connection/leg.
 
    Bidirectional Diameter (RFC 6733) -- server-initiated requests received on
    the client leg and the answers h2diagent sends back on it. After CER/CEA the

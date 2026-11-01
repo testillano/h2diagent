@@ -92,6 +92,39 @@ class DiameterClientPool {
         }
     }
 
+    /**
+     * Try to correlate an answer that arrived on another leg (e.g. the server
+     * leg) with a pending transaction of ANY pooled connection (hop-by-hop,
+     * then end-to-end; see DiameterClient::tryResolve).
+     * @return true if some connection resolved it.
+     */
+    bool tryResolve(const Buffer& answer) {
+        for (auto& c : clients_) {
+            if (c->tryResolve(answer)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Wire the unmatched-answer callback on every connection. An answer that
+     * misses on its own connection is first tried on the OTHER pooled
+     * connections, then offered to 'cb' (e.g. the server leg). If nobody
+     * resolves it, the client drops it with a Warning and the uncorrelated
+     * metric (never delivered as a request).
+     */
+    void setUnmatchedAnswerCallback(diametercomm::DiameterClient::UnmatchedAnswerCallback cb) {
+        unmatchedCb_ = std::move(cb);
+        for (auto& c : clients_) {
+            diametercomm::DiameterClient* raw = c.get();
+            c->setUnmatchedAnswerCallback([this, raw](const Buffer& answer) {
+                for (auto& other : clients_) {
+                    if (other.get() != raw && other->tryResolve(answer)) return true;
+                }
+                return unmatchedCb_ ? unmatchedCb_(answer) : false;
+            });
+        }
+    }
+
     /** Wire the timeout callback on every connection. */
     void setTimeoutCallback(diametercomm::DiameterClient::TimeoutCallback cb) {
         for (auto& c : clients_) c->setTimeoutCallback(cb);
@@ -161,6 +194,7 @@ class DiameterClientPool {
     std::vector<std::unique_ptr<diametercomm::DiameterClient>> clients_;
     std::atomic<std::size_t> cursor_{0};
     PoolRequestCallback requestCb_;
+    diametercomm::DiameterClient::UnmatchedAnswerCallback unmatchedCb_;
 };
 
 }  // namespace h2diagent

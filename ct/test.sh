@@ -223,8 +223,8 @@ You may inspect the peers via their h2agent admin APIs by port-forwarding:
   kubectl port-forward -n ${NAMESPACE} \${client_pod} 8075:8074 &   # client h2agent admin
 
 Then, e.g.:
-  curl -s --http2-prior-knowledge http://localhost:8074/admin/v1/server-data | jq .
-  curl -s --http2-prior-knowledge http://localhost:8075/admin/v1/client-data | jq .
+  curl -s --http2-prior-knowledge http://localhost:8074/admin/v2/server-data | jq .
+  curl -s --http2-prior-knowledge http://localhost:8075/admin/v2/client-data | jq .
 EOF
 fi
 

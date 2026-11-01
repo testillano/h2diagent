@@ -55,10 +55,14 @@ SERVER_PROVISION_CCA = {
         "CC-Request-Type": 1,
         "CC-Request-Number": 0,
     },
+    # h2agent grammar v2: json nodes are copied with their own type (no cast).
     "transform": [
-        {"source": "request.body./Session-Id", "target": "response.body.json.string./Session-Id"},
-        {"source": "request.body./CC-Request-Type", "target": "response.body.json.integer./CC-Request-Type"},
-        {"source": "request.body./CC-Request-Number", "target": "response.body.json.unsigned./CC-Request-Number"},
+        {"from": {"source": "requestBody", "path": "/Session-Id"},
+         "to": {"target": "responseBody", "path": "/Session-Id"}},
+        {"from": {"source": "requestBody", "path": "/CC-Request-Type"},
+         "to": {"target": "responseBody", "path": "/CC-Request-Type"}},
+        {"from": {"source": "requestBody", "path": "/CC-Request-Number"},
+         "to": {"target": "responseBody", "path": "/CC-Request-Number"}},
     ],
 }
 
@@ -114,7 +118,7 @@ def test_gx_ccri_cca_i(server_admin, client_admin):
     server_ccr = []
     trigger_attempts = 30
     for attempt in range(1, trigger_attempts + 1):
-        status, body = client_admin.get(ADMIN_CLIENT_PROVISION_URI + "/send-gx-ccr")
+        status, body = client_admin.post(ADMIN_CLIENT_PROVISION_URI + "/send-gx-ccr/trigger", None)
         assert status == 200, "trigger failed: status={} body={}".format(status, body)
         for _ in range(5):  # ~2s window per trigger
             time.sleep(0.4)

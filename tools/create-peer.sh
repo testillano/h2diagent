@@ -315,13 +315,13 @@ cd "${PEER_DIR}" && docker-compose up -d
 # Wait for h2agent readiness
 echo -n "Waiting for h2agent..."
 for i in $(seq 1 30); do
-    curl -sf --http2-prior-knowledge "http://localhost:${ADMIN_PORT}/admin/v1/health" >/dev/null 2>&1 && break
+    curl -sf --http2-prior-knowledge "http://localhost:${ADMIN_PORT}/admin/v2/health" >/dev/null 2>&1 && break
     sleep 0.5
     echo -n "."
 done
 echo ""
 
-if curl -sf --http2-prior-knowledge "http://localhost:${ADMIN_PORT}/admin/v1/health" >/dev/null 2>&1; then
+if curl -sf --http2-prior-knowledge "http://localhost:${ADMIN_PORT}/admin/v2/health" >/dev/null 2>&1; then
     echo "Peer ${PEER_NAME} is ready (admin: http://localhost:${ADMIN_PORT})"
 else
     echo "ERROR: peer ${PEER_NAME} failed to start"
@@ -333,16 +333,16 @@ if ls "${PEER_DIR}"/programming/*.json >/dev/null 2>&1; then
     echo "Loading programming..."
     ADMIN="http://localhost:${ADMIN_PORT}"
     for f in "${PEER_DIR}"/programming/server-matching*.json; do
-        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v1/server-matching" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
+        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v2/server-matching" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
     done
     for f in "${PEER_DIR}"/programming/server-provision*.json; do
-        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v1/server-provision" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
+        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v2/server-provision" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
     done
     for f in "${PEER_DIR}"/programming/client-endpoint*.json; do
-        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v1/client-endpoint" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
+        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v2/client-endpoint" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
     done
     for f in "${PEER_DIR}"/programming/client-provision*.json; do
-        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v1/client-provision" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
+        [ -f "$f" ] && curl -sf --http2-prior-knowledge -XPOST "${ADMIN}/admin/v2/client-provision" -H "content-type:application/json" -d @"$f" >/dev/null && echo "  $(basename $f)"
     done
 fi
 
@@ -404,9 +404,9 @@ EOF
       \"Auth-Application-Id\":16777238,\"CC-Request-Type\":0,\"CC-Request-Number\":0
     },
     \"transform\":[
-      {\"source\":\"request.body./Session-Id\",\"target\":\"response.body.json.string./Session-Id\"},
-      {\"source\":\"request.body./CC-Request-Type\",\"target\":\"response.body.json.integer./CC-Request-Type\"},
-      {\"source\":\"request.body./CC-Request-Number\",\"target\":\"response.body.json.unsigned./CC-Request-Number\"}
+      {\"from\":{\"source\":\"requestBody\",\"path\":\"/Session-Id\"},\"to\":{\"target\":\"responseBody\",\"path\":\"/Session-Id\"}},
+      {\"from\":{\"source\":\"requestBody\",\"path\":\"/CC-Request-Type\"},\"to\":{\"target\":\"responseBody\",\"path\":\"/CC-Request-Type\"}},
+      {\"from\":{\"source\":\"requestBody\",\"path\":\"/CC-Request-Number\"},\"to\":{\"target\":\"responseBody\",\"path\":\"/CC-Request-Number\"}}
     ]
   }"
                 FIRST=false
@@ -425,7 +425,7 @@ EOF
       \"Auth-Application-Id\":16777236
     },
     \"transform\":[
-      {\"source\":\"request.body./Session-Id\",\"target\":\"response.body.json.string./Session-Id\"}
+      {\"from\":{\"source\":\"requestBody\",\"path\":\"/Session-Id\"},\"to\":{\"target\":\"responseBody\",\"path\":\"/Session-Id\"}}
     ]
   }"
                 FIRST=false
@@ -444,7 +444,7 @@ EOF
       \"Auth-Application-Id\":16777302
     },
     \"transform\":[
-      {\"source\":\"request.body./Session-Id\",\"target\":\"response.body.json.string./Session-Id\"}
+      {\"from\":{\"source\":\"requestBody\",\"path\":\"/Session-Id\"},\"to\":{\"target\":\"responseBody\",\"path\":\"/Session-Id\"}}
     ]
   }"
                 FIRST=false

@@ -17,4 +17,4 @@ EXTRA_H2DIAGENT_ARGS="--diameter-server-crt /ssl/server.crt --diameter-server-ke
 SSL=1
 LOG_LEVEL="Warning"
 PEERING_WAIT=4
-TRIGGER="http://localhost:8174/admin/v1/client-provision/send-gx-ccr"
+TRIGGER="http://localhost:8174/admin/v2/client-provision/send-gx-ccr/trigger"

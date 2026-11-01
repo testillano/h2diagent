@@ -250,3 +250,117 @@ TEST(Helpers, RoundRobinIndex_ZeroSizeSafe) {
     std::atomic<std::size_t> cursor{0};
     EXPECT_EQ(roundRobinIndex(cursor, 0), 0u);
 }
+
+// =============================================================================
+// Raw message helpers (negative testing)
+// =============================================================================
+TEST(Helpers, HexToBytes_Valid) {
+    std::vector<uint8_t> out;
+    ASSERT_TRUE(hexToBytes("00aBfF", out));
+    EXPECT_EQ(out, (std::vector<uint8_t>{0x00, 0xab, 0xff}));
+    ASSERT_TRUE(hexToBytes("", out));
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(Helpers, HexToBytes_Invalid) {
+    std::vector<uint8_t> out;
+    EXPECT_FALSE(hexToBytes("abc", out));  // odd
+    EXPECT_FALSE(hexToBytes("zz", out));   // non-hex
+    EXPECT_FALSE(hexToBytes("0x01", out));
+    EXPECT_FALSE(hexToBytes("01 02", out));
+}
+
+TEST(Helpers, BytesToHex_RoundTrip) {
+    std::vector<uint8_t> in{0x01, 0x00, 0xfe};
+    EXPECT_EQ(bytesToHex(in), "0100fe");
+    std::vector<uint8_t> back;
+    ASSERT_TRUE(hexToBytes(bytesToHex(in), back));
+    EXPECT_EQ(back, in);
+}
+
+TEST(Helpers, HexId) {
+    EXPECT_EQ(hexId(0), "0x00000000");
+    EXPECT_EQ(hexId(0xdeadBEEF), "0xdeadbeef");
+}
+
+// 20-byte header: version 1, length 24, R-bit, CCR (272), Gx, hbh/e2e given.
+static std::string rawHeaderHex(const std::string& hbh, const std::string& e2e) {
+    return "01000018"
+           "80000110"
+           "01000016" +
+           hbh + e2e + "deadbeef";
+}
+
+TEST(Helpers, RawMessageFromHex_FillsZeroIds) {
+    std::vector<uint8_t> out;
+    std::string err;
+    ASSERT_TRUE(rawMessageFromHex(rawHeaderHex("00000000", "00000000"), 0x11111111, 0x22222222, out, err));
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(out.size(), 24u);
+    EXPECT_EQ(extractHopByHop(out), 0x11111111u);
+    EXPECT_EQ(extractEndToEnd(out), 0x22222222u);
+    EXPECT_EQ(extractCommandCode(out), 272u);
+    EXPECT_EQ(out[23], 0xef);  // body kept verbatim
+}
+
+TEST(Helpers, RawMessageFromHex_KeepsNonZeroIdsAndZeroFill) {
+    std::vector<uint8_t> out;
+    std::string err;
+    ASSERT_TRUE(rawMessageFromHex(rawHeaderHex("000000aa", "000000bb"), 0x11111111, 0x22222222, out, err));
+    EXPECT_EQ(extractHopByHop(out), 0xaau);
+    EXPECT_EQ(extractEndToEnd(out), 0xbbu);
+    // Request case: fill values 0 keep zero ids (the Diameter client assigns them).
+    ASSERT_TRUE(rawMessageFromHex(rawHeaderHex("00000000", "00000000"), 0, 0, out, err));
+    EXPECT_EQ(extractHopByHop(out), 0u);
+    EXPECT_EQ(extractEndToEnd(out), 0u);
+}
+
+TEST(Helpers, RawMessageFromHex_Rejects) {
+    std::vector<uint8_t> out;
+    std::string err;
+    EXPECT_FALSE(rawMessageFromHex("010000", 0, 0, out, err));  // < 20 bytes
+    EXPECT_NE(err.find("20-byte"), std::string::npos);
+    EXPECT_FALSE(rawMessageFromHex("0g", 0, 0, out, err));
+    EXPECT_NE(err.find("hex"), std::string::npos);
+    EXPECT_FALSE(rawMessageFromHex(std::string(39, '0'), 0, 0, out, err));  // odd
+}
+
+TEST(Helpers, HeaderJsonFromRaw) {
+    std::vector<uint8_t> msg;
+    ASSERT_TRUE(hexToBytes(rawHeaderHex("00000001", "00000002"), msg));
+    auto h = headerJsonFromRaw(msg);
+    EXPECT_EQ(h["version"], 1);
+    EXPECT_EQ(h["flags"], 0x80);
+    EXPECT_EQ(h["command-code"], 272);
+    EXPECT_EQ(h["request"], true);
+    EXPECT_EQ(h["application-id"], 16777238);
+    EXPECT_EQ(h["hop-by-hop-id"], 1);
+    EXPECT_EQ(h["end-to-end-id"], 2);
+    EXPECT_TRUE(headerJsonFromRaw(std::vector<uint8_t>(10, 0)).empty());
+}
+
+TEST(Helpers, UndecodedMessageJson) {
+    std::vector<uint8_t> msg;
+    ASSERT_TRUE(hexToBytes(rawHeaderHex("00000001", "00000002"), msg));
+    auto j = undecodedMessageJson(msg, "AVP length smaller than header");
+    EXPECT_EQ(j["_raw"], rawHeaderHex("00000001", "00000002"));
+    EXPECT_EQ(j["_decodeError"], "AVP length smaller than header");
+    EXPECT_EQ(j["_header"]["command-code"], 272);
+}
+
+TEST(Helpers, ErrorBody_IsValidJsonWithQuotes) {
+    std::string body = errorBody("Invalid JSON: unexpected '\"' at \\ end");
+    auto j = nlohmann::json::parse(body);  // must not throw
+    EXPECT_EQ(j["error"], "Invalid JSON: unexpected '\"' at \\ end");
+}
+
+TEST(Helpers, ErrorBody_MergesExtra) {
+    auto j =
+        nlohmann::json::parse(errorBody("Diameter answer timeout", {{"hopByHop", "0x00000001"}, {"timeoutMs", 5}}));
+    EXPECT_EQ(j["error"], "Diameter answer timeout");
+    EXPECT_EQ(j["hopByHop"], "0x00000001");
+    EXPECT_EQ(j["timeoutMs"], 5);
+    // 'error' always wins; non-object extra ignored
+    EXPECT_EQ(nlohmann::json::parse(errorBody("e", {{"error", "x"}}))["error"], "e");
+    EXPECT_EQ(nlohmann::json::parse(errorBody("e", nlohmann::json::array()))["error"], "e");
+}

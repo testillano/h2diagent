@@ -26,8 +26,8 @@ Single CCR-I/CCA-I through the full Diameter translation pipeline.
 ./4.trigger.sh
 
 # Verify:
-curl -sf --http2-prior-knowledge http://localhost:8174/admin/v1/client-data | python3 -m json.tool
-curl -sf --http2-prior-knowledge http://localhost:8274/admin/v1/server-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8174/admin/v2/client-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8274/admin/v2/server-data | python3 -m json.tool
 
 ./5.stop.sh
 ```
@@ -63,8 +63,8 @@ TCP flow; only the transport differs.
 ss --sctp -a | grep -E ':3868'
 
 # Verify the translation pipeline (same as gx-functional):
-curl -sf --http2-prior-knowledge http://localhost:8174/admin/v1/client-data | python3 -m json.tool
-curl -sf --http2-prior-knowledge http://localhost:8274/admin/v1/server-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8174/admin/v2/client-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8274/admin/v2/server-data | python3 -m json.tool
 
 ./5.stop.sh
 ```
@@ -97,8 +97,8 @@ openssl s_client -connect localhost:3868 -CAfile ./deployment/ssl/ca.crt </dev/n
   | grep -E "subject=|Verify return code"
 
 # Verify the translation pipeline (same as gx-functional):
-curl -sf --http2-prior-knowledge http://localhost:8174/admin/v1/client-data | python3 -m json.tool
-curl -sf --http2-prior-knowledge http://localhost:8274/admin/v1/server-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8174/admin/v2/client-data | python3 -m json.tool
+curl -sf --http2-prior-knowledge http://localhost:8274/admin/v2/server-data | python3 -m json.tool
 
 ./5.stop.sh
 ```
@@ -143,7 +143,7 @@ PEERS=(
 
 EXTRA_H2AGENT_ARGS=""         # e.g., "--discard-data"
 PEERING_WAIT=4                # seconds to wait for CER/CEA
-TRIGGER="http://localhost:8174/admin/v1/client-provision/send-gx-ccr"
+TRIGGER="http://localhost:8174/admin/v2/client-provision/send-gx-ccr/trigger"
 ```
 
 Then: `./1.deploy.sh my-test && ./2.run.sh && ./4.trigger.sh`

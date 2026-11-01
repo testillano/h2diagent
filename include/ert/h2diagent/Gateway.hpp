@@ -157,11 +157,24 @@ class Gateway {
     void sendDiameterAnswer(const std::shared_ptr<diametercomm::Peer>& peer, diametercomm::Peer::Buffer&& answer,
                             bool fromClient, diametercomm::DiameterClient* originatingClient);
 
+    // Send a minimal DIAMETER_UNABLE_TO_COMPLY (5012) answer for an inbound
+    // request (h2agent timeout, non-200, or an answer that cannot be built),
+    // echoing the request Session-Id when known (empty = omitted).
+    void sendUnableToComply(const std::shared_ptr<diametercomm::Peer>& peer, bool fromClient,
+                            diametercomm::DiameterClient* originatingClient, uint32_t commandCode, uint32_t appId,
+                            uint32_t hbh, uint32_t e2e, const std::string& sessionId);
+
+    using OutboundRespond = std::function<void(int, const std::string&, const nghttp2::asio_http2::header_map&)>;
+
     // Outbound: HTTP/2 request from h2agent -> translate -> send Diameter to Server
-    void onH2agentOutboundRequest(
-        const std::string& method, const std::string& uri, const std::string& body,
-        const nghttp2::asio_http2::header_map& headers,
-        std::function<void(int, const std::string&, const nghttp2::asio_http2::header_map&)> respond);
+    void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
+                                  const nghttp2::asio_http2::header_map& headers, OutboundRespond respond);
+
+    // Send an encoded outbound request on a pooled client and ALWAYS answer the
+    // HTTP/2 client: 200 (answer), 502 (no peer / send failed / undecodable
+    // answer) or 504 (answer timeout).
+    void sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
+                      const ert::metrics::labels_t& additionalLabels, OutboundRespond respond);
 
     // (Re)connect the HTTP/2 client to h2agent. Creates a fresh nghttp2 session.
     // Must run on the h2clientIo_ thread (the only thread that mutates the session).

@@ -102,8 +102,8 @@ client_pod=$(kubectl get pod -n $NS -l app.kubernetes.io/name=client -o name | h
 kubectl port-forward -n $NS $server_pod 8074:8074 &   # server h2agent admin
 kubectl port-forward -n $NS $client_pod 8075:8074 &   # client h2agent admin
 
-curl -s --http2-prior-knowledge http://localhost:8074/admin/v1/server-data | jq .
-curl -s --http2-prior-knowledge http://localhost:8075/admin/v1/client-data | jq .
+curl -s --http2-prior-knowledge http://localhost:8074/admin/v2/server-data | jq .
+curl -s --http2-prior-knowledge http://localhost:8075/admin/v2/client-data | jq .
 ```
 
 Data recorded by the *last* test remains available (the suite cleans provisions
@@ -124,7 +124,7 @@ kubectl exec -it -n $NS $server_pod -c h2agent -- bash
   that. The CT uses TCP.
 - `h2diagent` has no admin/health endpoint yet, so its container readiness is a
   TCP check on the HTTP/2 server port; the `h2agent` sidecar uses its own
-  `/admin/v1/health`.
+  `/admin/v2/health`.
 - **Startup ordering**: Kubernetes does not guarantee container/pod start order.
   `h2diagent` now reconnects automatically (the Diameter client uses
   diametercomm's exponential backoff, and the HTTP/2 client towards `h2agent`

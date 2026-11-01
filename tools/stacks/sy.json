@@ -951,6 +951,7 @@
     {
       "name": "CER",
       "code": 257,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Mandatory",
@@ -1094,6 +1095,7 @@
     {
       "name": "RAR",
       "code": 258,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",
@@ -1217,6 +1219,7 @@
     {
       "name": "ACR",
       "code": 271,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",
@@ -1386,6 +1389,7 @@
     {
       "name": "ASR",
       "code": 274,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",
@@ -1505,6 +1509,7 @@
     {
       "name": "ST-Request",
       "code": 275,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",
@@ -1620,6 +1625,7 @@
     {
       "name": "DWR",
       "code": 280,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Mandatory",
@@ -1669,6 +1675,7 @@
     {
       "name": "DPR",
       "code": 282,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Mandatory",
@@ -1714,6 +1721,7 @@
     {
       "name": "SL-Request",
       "code": 8388635,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",
@@ -1860,6 +1868,7 @@
     {
       "name": "SN-Request",
       "code": 8388636,
+      "r-bit": true,
       "avprule": [
         {
           "type": "Fixed",

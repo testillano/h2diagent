@@ -28,7 +28,7 @@ from hyper import HTTP20Connection  # noqa: E402
 # CONSTANTS #
 #############
 
-ADMIN_URI_PREFIX = "/admin/v1/"
+ADMIN_URI_PREFIX = "/admin/v2/"
 ADMIN_SERVER_MATCHING_URI = ADMIN_URI_PREFIX + "server-matching"
 ADMIN_SERVER_PROVISION_URI = ADMIN_URI_PREFIX + "server-provision"
 ADMIN_SERVER_DATA_URI = ADMIN_URI_PREFIX + "server-data"
@@ -160,11 +160,12 @@ def trigger():
     Returns a callable: trigger(client_admin, provision_id, retries, delay).
     """
     def _trigger(client_admin, provision_id, retries=20, delay=1.0):
-        # h2agent triggers an on-demand client provision via GET on its id.
-        uri = ADMIN_CLIENT_PROVISION_URI + "/" + provision_id
+        # h2agent (admin API v2) triggers a client provision with a POST on
+        # its 'trigger' sub-resource.
+        uri = ADMIN_CLIENT_PROVISION_URI + "/" + provision_id + "/trigger"
         last = None
         for attempt in range(1, retries + 1):
-            status, body = client_admin.get(uri)
+            status, body = client_admin.post(uri, None)
             last = (status, body)
             if status in (200, 201):
                 logger.info("trigger '%s' ok on attempt %d", provision_id, attempt)

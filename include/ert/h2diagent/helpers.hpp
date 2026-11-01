@@ -9,6 +9,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -182,6 +183,117 @@ inline bool validateDiameterConnections(int connections, bool isSctp, std::strin
 inline std::size_t roundRobinIndex(std::atomic<std::size_t>& cursor, std::size_t size) {
     if (size <= 1) return 0;
     return cursor.fetch_add(1, std::memory_order_relaxed) % size;
+}
+
+// =============================================================================
+// Raw message helpers (negative testing: '_raw' JSON key, decode failures)
+// =============================================================================
+
+// Strict hex -> bytes: even length, hex digits only (either case). Returns
+// false (and leaves 'out' unspecified) on invalid input.
+inline bool hexToBytes(const std::string& hex, std::vector<uint8_t>& out) {
+    if (hex.size() % 2 != 0) return false;
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    out.clear();
+    out.reserve(hex.size() / 2);
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        int hi = nibble(hex[i]);
+        int lo = nibble(hex[i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        out.push_back(static_cast<uint8_t>((hi << 4) | lo));
+    }
+    return true;
+}
+
+// Bytes -> lowercase hex.
+inline std::string bytesToHex(const std::vector<uint8_t>& bytes) {
+    static const char* digits = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (uint8_t b : bytes) {
+        out.push_back(digits[b >> 4]);
+        out.push_back(digits[b & 0x0f]);
+    }
+    return out;
+}
+
+inline void setHopByHop(std::vector<uint8_t>& msg, uint32_t hbh) {
+    if (msg.size() < 20) return;
+    msg[12] = static_cast<uint8_t>(hbh >> 24);
+    msg[13] = static_cast<uint8_t>(hbh >> 16);
+    msg[14] = static_cast<uint8_t>(hbh >> 8);
+    msg[15] = static_cast<uint8_t>(hbh);
+}
+
+inline void setEndToEnd(std::vector<uint8_t>& msg, uint32_t e2e) {
+    if (msg.size() < 20) return;
+    msg[16] = static_cast<uint8_t>(e2e >> 24);
+    msg[17] = static_cast<uint8_t>(e2e >> 16);
+    msg[18] = static_cast<uint8_t>(e2e >> 8);
+    msg[19] = static_cast<uint8_t>(e2e);
+}
+
+// Build a raw Diameter message from the '_raw' hex value. The bytes are kept
+// verbatim (length, flags, AVPs: whatever the test wants) except hop-by-hop /
+// end-to-end, which are filled with 'hbhIfZero' / 'e2eIfZero' when they are 0
+// so correlation keeps working (an answer gets the request ids; a request
+// passes 0 and lets the Diameter client assign them). At least the 20-byte
+// header is required. On failure returns false with a reason in 'err'.
+inline bool rawMessageFromHex(const std::string& hex, uint32_t hbhIfZero, uint32_t e2eIfZero, std::vector<uint8_t>& out,
+                              std::string& err) {
+    if (!hexToBytes(hex, out)) {
+        err = "'_raw' must be an even-length hex string";
+        return false;
+    }
+    if (out.size() < 20) {
+        err = "'_raw' must contain at least the 20-byte Diameter header";
+        return false;
+    }
+    if (extractHopByHop(out) == 0 && hbhIfZero != 0) setHopByHop(out, hbhIfZero);
+    if (extractEndToEnd(out) == 0 && e2eIfZero != 0) setEndToEnd(out, e2eIfZero);
+    err.clear();
+    return true;
+}
+
+// '_header' JSON read from the first 20 bytes (same fields as the codec emits),
+// for messages that could not be decoded.
+inline nlohmann::json headerJsonFromRaw(const std::vector<uint8_t>& msg) {
+    if (msg.size() < 20) return nlohmann::json::object();
+    return {{"version", msg[0]},
+            {"flags", msg[4]},
+            {"command-code", extractCommandCode(msg)},
+            {"request", isRequest(msg)},
+            {"application-id", extractApplicationId(msg)},
+            {"hop-by-hop-id", extractHopByHop(msg)},
+            {"end-to-end-id", extractEndToEnd(msg)}};
+}
+
+// JSON body sent to h2agent when an inbound Diameter message cannot be decoded:
+// the raw bytes, the decoder error and the header (so provisions can still
+// route/answer it, e.g. with 5014 via '_raw' or plain JSON).
+inline nlohmann::json undecodedMessageJson(const std::vector<uint8_t>& msg, const std::string& decodeError) {
+    return {{"_raw", bytesToHex(msg)}, {"_decodeError", decodeError}, {"_header", headerJsonFromRaw(msg)}};
+}
+
+// Error body for HTTP/2 responses: valid JSON whatever the message contains
+// (e.g. quotes in an exception text). 'extra' fields are merged in.
+inline std::string errorBody(const std::string& error, const nlohmann::json& extra = nlohmann::json::object()) {
+    nlohmann::json j = extra.is_object() ? extra : nlohmann::json::object();
+    j["error"] = error;
+    return j.dump();
+}
+
+// "0x%08x" rendering of a hop-by-hop / end-to-end id.
+inline std::string hexId(uint32_t id) {
+    static const char* digits = "0123456789abcdef";
+    std::string out = "0x";
+    for (int shift = 28; shift >= 0; shift -= 4) out.push_back(digits[(id >> shift) & 0xf]);
+    return out;
 }
 
 }  // namespace helpers

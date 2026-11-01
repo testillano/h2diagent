@@ -182,7 +182,7 @@ spec:
                 - curl
                 - -sf
                 - --http2-prior-knowledge
-                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v1/health
+                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v2/health
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
@@ -191,7 +191,7 @@ spec:
                 - curl
                 - -sf
                 - --http2-prior-knowledge
-                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v1/health
+                - http://localhost:{{ .Values.h2agent.adminPort }}/admin/v2/health
             initialDelaySeconds: 10
             periodSeconds: 10
           {{- if .Values.h2agent.utilsMountPath }}

@@ -246,6 +246,15 @@ void Gateway::start() {
             [this](std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg) {
                 onDiameterRequest(std::move(peer), std::move(msg));
             });
+        // Cross-leg correlation: the stack sees ONE peer (same Origin-Host) with
+        // two connections and may return an answer to a client-leg request on
+        // the connection it opened to our server leg. Resolve it on the client
+        // pool (hop-by-hop, then end-to-end) before dropping it. The pool is
+        // created later in start(), before the io_context runs.
+        diameterServer_->setUnmatchedAnswerCallback(
+            [this](std::shared_ptr<diametercomm::Peer>, const diametercomm::Peer::Buffer& answer) {
+                return diameterClientPool_ && diameterClientPool_->tryResolve(answer);
+            });
         diameterServer_->listen("0.0.0.0", config_.diameterPort);
 
         LOGWARNING(ert::tracing::Logger::warning(
@@ -292,6 +301,11 @@ void Gateway::start() {
                                                        std::shared_ptr<diametercomm::Peer> peer,
                                                        diametercomm::Peer::Buffer&& msg) {
             onDiameterRequest(std::move(peer), std::move(msg), /*fromClient=*/true, originating);
+        });
+        // Cross-leg correlation, reverse direction: an answer to a server-leg
+        // request (e.g. RAA) arriving on a client connection.
+        diameterClientPool_->setUnmatchedAnswerCallback([this](const diametercomm::Peer::Buffer& answer) {
+            return diameterServer_ && diameterServer_->tryResolve(answer);
         });
         diameterClientPool_->setTimeoutCallback([this](uint32_t hbh) {
             LOGWARNING(ert::tracing::Logger::warning(
@@ -550,6 +564,38 @@ void Gateway::sendDiameterAnswer(const std::shared_ptr<diametercomm::Peer>& peer
 }
 
 // ============================================================================
+// sendUnableToComply - minimal 5012 answer for an inbound request
+// ============================================================================
+void Gateway::sendUnableToComply(const std::shared_ptr<diametercomm::Peer>& peer, bool fromClient,
+                                 diametercomm::DiameterClient* originatingClient, uint32_t commandCode, uint32_t appId,
+                                 uint32_t hbh, uint32_t e2e, const std::string& sessionId) {
+    const auto& dict = getDictionary(appId);
+    nlohmann::json errorJson = {{"Result-Code", 5012},
+                                {"Origin-Host", config_.originHost},
+                                {"Origin-Realm", config_.originRealm},
+                                {"_header",
+                                 {{"version", 1},
+                                  {"flags", 0},
+                                  {"command-code", commandCode},
+                                  {"request", false},
+                                  {"application-id", appId},
+                                  {"hop-by-hop-id", hbh},
+                                  {"end-to-end-id", e2e}}}};
+    // Session-Id echoed from the request (when known) so the peer can
+    // correlate the error answer with its session.
+    if (!sessionId.empty()) errorJson["Session-Id"] = sessionId;
+    try {
+        diametercodec::codec::Message answerMsg = diametercodec::codec::Message::fromJson(errorJson, dict);
+        diametercodec::core::Buffer encoded = answerMsg.encode(dict);
+        sendDiameterAnswer(peer, std::move(encoded), fromClient, originatingClient);
+    } catch (const std::exception& e) {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Failed to build DIAMETER_UNABLE_TO_COMPLY answer: %s", e.what()),
+            ERT_FILE_LOCATION));
+    }
+}
+
+// ============================================================================
 // onDiameterRequest - Inbound: Diameter -> JSON -> HTTP/2 -> h2agent
 // ============================================================================
 void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diametercomm::Peer::Buffer&& msg,
@@ -567,6 +613,18 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     uint32_t e2e = extractEndToEnd(msg);
     bool reqFlag = isRequest(msg);
 
+    // Guard: only requests are forwarded to h2agent. An answer here would make
+    // the gateway build an answer to an answer. diametercomm already drops
+    // uncorrelated answers on both legs; this protects any other path.
+    if (!reqFlag) {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Dropping Diameter answer delivered as inbound request: cmd=%u app=%u "
+                                           "hbh=0x%08x e2e=0x%08x",
+                                           commandCode, appId, hbh, e2e),
+            ERT_FILE_LOCATION));
+        return;
+    }
+
     std::string interface = appIdToInterface(appId);
     std::string command = commandCodeToName(commandCode);
 
@@ -577,17 +635,21 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         ERT_FILE_LOCATION));
 
     // 1. Decode Diameter binary -> codec::Message -> JSON
+    // A message that cannot be decoded (bad AVP length, truncated, wrong data
+    // size...) is still forwarded, as {_raw, _decodeError, _header}, so the
+    // provision decides the answer (e.g. 5014/5004) instead of a silent drop.
     const auto& dict = getDictionary(appId);
-    diametercodec::codec::Message diameterMsg;
+    nlohmann::json jsonBody;
     try {
+        diametercodec::codec::Message diameterMsg;
         diameterMsg.decode(msg.data(), msg.size(), dict);
+        jsonBody = diameterMsg.toJson(dict);
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("Failed to decode Diameter message: %s", e.what()), ERT_FILE_LOCATION));
-        return;
+            ert::tracing::Logger::asString("Failed to decode Diameter message (forwarded as _raw): %s", e.what()),
+            ERT_FILE_LOCATION));
+        jsonBody = helpers::undecodedMessageJson(msg, e.what());
     }
-
-    nlohmann::json jsonBody = diameterMsg.toJson(dict);
 
     LOGDEBUG(ert::tracing::Logger::debug(
         ert::tracing::Logger::asString("Diameter -> JSON: %s", jsonBody.dump().c_str()), ERT_FILE_LOCATION));
@@ -596,18 +658,24 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     std::string path = "/diameter/" + interface + "/" + command;
     std::string fullUri = "http://" + config_.h2agentHost + ":" + std::to_string(config_.h2agentPort) + path;
     std::string bodyStr = jsonBody.dump();
+    std::string sessionId;
+    auto itSid = jsonBody.find("Session-Id");
+    if (itSid != jsonBody.end() && itSid->is_string()) sessionId = itSid->get<std::string>();
 
     // 3. Send HTTP/2 request to h2agent and handle response.
     // Check only the atomic here: the session pointer is mutated on the
     // h2clientIo_ thread (reconnection), so it must not be dereferenced from
     // this (Diameter) thread. The null-check on the session is done inside the
     // posted lambda, which runs on the h2clientIo_ thread.
+    auto peerPtr = peer;  // capture for lambda
+
+    // h2agent unreachable: answer 5012 now instead of leaving the peer to time out.
     if (!h2clientConnected_.load()) {
-        LOGWARNING(ert::tracing::Logger::warning("HTTP/2 client not connected to h2agent", ERT_FILE_LOCATION));
+        LOGWARNING(ert::tracing::Logger::warning(
+            "HTTP/2 client not connected to h2agent, sending DIAMETER_UNABLE_TO_COMPLY", ERT_FILE_LOCATION));
+        sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
         return;
     }
-
-    auto peerPtr = peer;  // capture for lambda
 
     nghttp2::asio_http2::header_map h;
     h.emplace("content-type", nghttp2::asio_http2::header_value{"application/json", false});
@@ -615,17 +683,28 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     h.emplace("x-diameter-application-id", nghttp2::asio_http2::header_value{std::to_string(appId), false});
     h.emplace("x-diameter-hop-by-hop", nghttp2::asio_http2::header_value{std::to_string(hbh), false});
     h.emplace("x-diameter-end-to-end", nghttp2::asio_http2::header_value{std::to_string(e2e), false});
-    h.emplace("x-diameter-flags", nghttp2::asio_http2::header_value{std::to_string(diameterMsg.getFlags()), false});
+    h.emplace("x-diameter-flags", nghttp2::asio_http2::header_value{std::to_string(msg[4]), false});
 
     // Post submit to the session's io_service to avoid nghttp2 re-entrancy assert
     auto h_ptr = std::make_shared<nghttp2::asio_http2::header_map>(std::move(h));
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
 
     boost::asio::post(h2clientIo_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, h_ptr,
-                                    bodyStr_ptr, fullUri_copy = std::move(fullUri)]() {
+                                    bodyStr_ptr, sessionId, fullUri_copy = std::move(fullUri)]() {
+        // Not forwarded: answer 5012 from the Diameter io_context (where the
+        // other answers are sent from), not from this HTTP/2 client thread.
+        auto unableToComply = [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
+                               sessionId]() {
+            boost::asio::post(
+                io_, [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId]() {
+                    sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
+                });
+        };
         if (!h2clientSession_) {
-            LOGWARNING(
-                ert::tracing::Logger::warning("HTTP/2 client session not available (reconnecting)", ERT_FILE_LOCATION));
+            LOGWARNING(ert::tracing::Logger::warning(
+                "HTTP/2 client session not available (reconnecting), sending DIAMETER_UNABLE_TO_COMPLY",
+                ERT_FILE_LOCATION));
+            unableToComply();
             return;
         }
         boost::system::error_code ec;
@@ -633,8 +712,10 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
 
         if (ec || !req) {
             LOGWARNING(ert::tracing::Logger::warning(
-                ert::tracing::Logger::asString("Failed to submit HTTP/2 request: %s", ec.message().c_str()),
+                ert::tracing::Logger::asString(
+                    "Failed to submit HTTP/2 request (%s), sending DIAMETER_UNABLE_TO_COMPLY", ec.message().c_str()),
                 ERT_FILE_LOCATION));
+            unableToComply();
             return;
         }
 
@@ -651,8 +732,8 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         // Inbound timeout: if h2agent doesn't respond in time, send DIAMETER_UNABLE_TO_COMPLY
         auto timer = std::make_shared<boost::asio::steady_timer>(io_);
         timer->expires_after(std::chrono::milliseconds(config_.diameterTimeoutMs));
-        timer->async_wait([this, timer, timedOut, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode,
-                           appId](const boost::system::error_code& ec) {
+        timer->async_wait([this, timer, timedOut, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
+                           sessionId](const boost::system::error_code& ec) {
             if (ec) return;                        // cancelled (response arrived in time)
             if (timedOut->exchange(true)) return;  // already handled
 
@@ -662,34 +743,15 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                     config_.diameterTimeoutMs, commandCode),
                 ERT_FILE_LOCATION));
 
-            // Build minimal error answer
-            const auto& dict = getDictionary(appId);
-            nlohmann::json errorJson = {{"Result-Code", 5012},
-                                        {"Origin-Host", config_.originHost},
-                                        {"Origin-Realm", config_.originRealm},
-                                        {"_header",
-                                         {{"version", 1},
-                                          {"flags", 0},
-                                          {"command-code", commandCode},
-                                          {"request", false},
-                                          {"application-id", appId},
-                                          {"hop-by-hop-id", hbh},
-                                          {"end-to-end-id", e2e}}}};
-
-            try {
-                diametercodec::codec::Message answerMsg = diametercodec::codec::Message::fromJson(errorJson, dict);
-                diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
-            } catch (...) {
-            }
+            sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
         });
 
         req->on_response([this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
-                          timedOut, timer](const nghttp2::asio_http2::client::response& res) {
+                          timedOut, timer, sessionId](const nghttp2::asio_http2::client::response& res) {
             int statusCode = res.status_code();
 
             res.on_data([this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
-                         timedOut, timer, statusCode](const uint8_t* data, std::size_t len) {
+                         timedOut, timer, statusCode, sessionId](const uint8_t* data, std::size_t len) {
                 if (len > 0) {
                     responseBody->append(reinterpret_cast<const char*>(data), len);
                     return;
@@ -697,7 +759,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
 
                 // End of response body - post processing outside nghttp2 callback to avoid re-entrancy
                 boost::asio::post(io_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
-                                        responseBody, timedOut, timer, statusCode]() {
+                                        responseBody, timedOut, timer, statusCode, sessionId]() {
                     timer->cancel();               // cancel the timeout
                     if (timedOut->load()) return;  // already sent error answer
 
@@ -720,25 +782,8 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                             ERT_FILE_LOCATION));
 
                         // Send DIAMETER_UNABLE_TO_COMPLY (5012)
-                        const auto& dict = getDictionary(appId);
-                        nlohmann::json errorJson = {{"Result-Code", 5012},
-                                                    {"Origin-Host", config_.originHost},
-                                                    {"Origin-Realm", config_.originRealm},
-                                                    {"_header",
-                                                     {{"version", 1},
-                                                      {"flags", 0},
-                                                      {"command-code", commandCode},
-                                                      {"request", false},
-                                                      {"application-id", appId},
-                                                      {"hop-by-hop-id", hbh},
-                                                      {"end-to-end-id", e2e}}}};
-                        try {
-                            diametercodec::codec::Message answerMsg =
-                                diametercodec::codec::Message::fromJson(errorJson, dict);
-                            diametercodec::core::Buffer encoded = answerMsg.encode(dict);
-                            sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
-                        } catch (...) {
-                        }
+                        sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
+                                           sessionId);
                         return;
                     }
 
@@ -749,6 +794,23 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                         LOGDEBUG(ert::tracing::Logger::debug(
                             ert::tracing::Logger::asString("JSON -> Diameter: %s", responseBody->c_str()),
                             ERT_FILE_LOCATION));
+
+                        // Negative testing: '_raw' answer sent verbatim (only
+                        // zero hop-by-hop/end-to-end are filled from the request).
+                        auto itRaw = respJson.find("_raw");
+                        if (itRaw != respJson.end()) {
+                            if (!itRaw->is_string()) throw std::runtime_error("'_raw' must be a hex string");
+                            diametercomm::Peer::Buffer rawAnswer;
+                            std::string err;
+                            if (!helpers::rawMessageFromHex(itRaw->get<std::string>(), hbh, e2e, rawAnswer, err))
+                                throw std::runtime_error(err);
+                            LOGINFORMATIONAL(ert::tracing::Logger::informational(
+                                ert::tracing::Logger::asString("Sending raw Diameter answer (%zu bytes) hbh=0x%08x",
+                                                               rawAnswer.size(), hbh),
+                                ERT_FILE_LOCATION));
+                            sendDiameterAnswer(peerPtr, std::move(rawAnswer), fromClient, originatingClient);
+                            return;
+                        }
 
                         // Inject _header for the answer if not present
                         if (!respJson.contains("_header")) {
@@ -776,9 +838,13 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                         sendDiameterAnswer(peerPtr, std::move(encoded), fromClient, originatingClient);
 
                     } catch (const std::exception& e) {
+                        // Do not leave the peer waiting for an answer that never comes.
                         LOGWARNING(ert::tracing::Logger::warning(
-                            ert::tracing::Logger::asString("Failed to build Diameter answer: %s", e.what()),
+                            ert::tracing::Logger::asString(
+                                "Failed to build Diameter answer, sending DIAMETER_UNABLE_TO_COMPLY: %s", e.what()),
                             ERT_FILE_LOCATION));
+                        sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
+                                           sessionId);
                     }
                 });  // end io_.post() for response processing
             });
@@ -824,6 +890,25 @@ void Gateway::onH2agentOutboundRequest(
 
         LOGDEBUG(ert::tracing::Logger::debug(
             ert::tracing::Logger::asString("Outbound JSON -> Diameter: %s", body.c_str()), ERT_FILE_LOCATION));
+
+        // Negative testing: '_raw' request sent verbatim (zero hop-by-hop and
+        // end-to-end are assigned by the Diameter client as usual).
+        auto itRaw = reqJson.find("_raw");
+        if (itRaw != reqJson.end()) {
+            diametercomm::Peer::Buffer rawRequest;
+            std::string err;
+            if (!itRaw->is_string() || !helpers::rawMessageFromHex(itRaw->get<std::string>(), 0, 0, rawRequest, err)) {
+                if (err.empty()) err = "'_raw' must be a hex string";
+                respond(400, helpers::errorBody("Invalid _raw: " + err), {});
+                return;
+            }
+            LOGINFORMATIONAL(ert::tracing::Logger::informational(
+                ert::tracing::Logger::asString("Sending raw Diameter request (%zu bytes) to peer", rawRequest.size()),
+                ERT_FILE_LOCATION));
+            uint32_t rawAppId = helpers::extractApplicationId(rawRequest);
+            sendOutbound(std::move(rawRequest), rawAppId, {}, respond);
+            return;
+        }
 
         // Inject _header from URI path if not present
         // URI format: /diameter/<interface>/<command>
@@ -876,6 +961,10 @@ void Gateway::onH2agentOutboundRequest(
                 {"hop-by-hop-id", 0},  // will be assigned by peer
                 {"end-to-end-id", 0}   // will be assigned by peer
             };
+        } else if (reqJson["_header"].is_object()) {
+            // Explicit header: select the dictionary by its application-id
+            // (multi-stack), not the default one.
+            appId = reqJson["_header"].value("application-id", 0u);
         }
 
         const auto& dict = getDictionary(appId);
@@ -911,52 +1000,85 @@ void Gateway::onH2agentOutboundRequest(
             additionalLabels[sanitizeLabelKey(avpName)] = std::move(value);
         }
 
-        // 3. Send via a pooled Diameter client (round-robin, preferring a ready
-        // connection) with response callback. The answer returns on the SAME
-        // client that sent (per-connection correlation), so no pool routing is
-        // needed on the way back.
-        diametercomm::DiameterClient* client = diameterClientPool_ ? diameterClientPool_->pickReady() : nullptr;
-        if (!client) {
-            LOGWARNING(ert::tracing::Logger::warning("No ready Diameter connection in the pool for outbound request",
-                                                     ERT_FILE_LOCATION));
-            // Same peer-down condition as above (readiness lost between the entry check and
-            // picking a connection): fail fast with 502 + diagnostic header, policy-free.
-            nghttp2::asio_http2::header_map peerDownHeaders;
-            peerDownHeaders.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
-            respond(502, R"({"error":"Diameter peer not connected","peerState":"closed"})", peerDownHeaders);
-            return;
-        }
-        client->send(
-            std::move(encoded),
-            [this, respond, appId](const diametercomm::Peer::Buffer& answerMsg) {
-                // 4. Diameter answer received -> decode -> JSON -> HTTP/2 response
-                try {
-                    const auto& dict = getDictionary(appId);
-                    diametercodec::codec::Message answer;
-                    answer.decode(answerMsg.data(), answerMsg.size(), dict);
-
-                    nlohmann::json respJson = answer.toJson(dict);
-                    std::string respStr = respJson.dump();
-
-                    LOGINFORMATIONAL(ert::tracing::Logger::informational(
-                        ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
-                        ERT_FILE_LOCATION));
-
-                    respond(200, respStr, {});
-
-                } catch (const std::exception& e) {
-                    LOGWARNING(ert::tracing::Logger::warning(
-                        ert::tracing::Logger::asString("Failed to decode Diameter answer: %s", e.what()),
-                        ERT_FILE_LOCATION));
-                    respond(502, R"({"error":"Failed to decode Diameter answer"})", {});
-                }
-            },
-            config_.diameterTimeoutMs, additionalLabels);
+        // 3. Send (answer, timeout and send failure all respond to h2agent)
+        sendOutbound(std::move(encoded), appId, additionalLabels, respond);
 
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
             ert::tracing::Logger::asString("Failed to parse outbound JSON: %s", e.what()), ERT_FILE_LOCATION));
-        respond(400, std::string(R"({"error":"Invalid JSON: )") + e.what() + "\"}", {});
+        respond(400, helpers::errorBody(std::string("Invalid JSON: ") + e.what()), {});
+    }
+}
+
+// ============================================================================
+// sendOutbound - send an encoded request and ALWAYS respond to the HTTP/2 client
+// ============================================================================
+void Gateway::sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
+                           const ert::metrics::labels_t& additionalLabels, OutboundRespond respond) {
+    // Pooled Diameter client (round-robin, preferring a ready connection). The
+    // answer normally returns on the SAME client (per-connection correlation);
+    // cross-leg / end-to-end fallbacks are handled by diametercomm + the
+    // unmatched-answer callbacks wired in start().
+    diametercomm::DiameterClient* client = diameterClientPool_ ? diameterClientPool_->pickReady() : nullptr;
+    if (!client) {
+        LOGWARNING(ert::tracing::Logger::warning("No ready Diameter connection in the pool for outbound request",
+                                                 ERT_FILE_LOCATION));
+        // Peer-down condition (readiness lost between the entry check and picking
+        // a connection): fail fast with 502 + diagnostic header, policy-free.
+        nghttp2::asio_http2::header_map peerDownHeaders;
+        peerDownHeaders.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+        respond(502, R"({"error":"Diameter peer not connected","peerState":"closed"})", peerDownHeaders);
+        return;
+    }
+
+    uint32_t timeoutMs = config_.diameterTimeoutMs;
+    // Exactly one of answer / timeout fires (diametercomm removes the pending
+    // entry under lock); a refused send fires neither and returns 0.
+    uint32_t hbh = client->send(
+        std::move(encoded),
+        [this, respond, appId](const diametercomm::Peer::Buffer& answerMsg) {
+            // 4. Diameter answer received -> decode -> JSON -> HTTP/2 response
+            try {
+                const auto& dict = getDictionary(appId);
+                diametercodec::codec::Message answer;
+                answer.decode(answerMsg.data(), answerMsg.size(), dict);
+
+                nlohmann::json respJson = answer.toJson(dict);
+                std::string respStr = respJson.dump();
+
+                LOGINFORMATIONAL(ert::tracing::Logger::informational(
+                    ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
+                    ERT_FILE_LOCATION));
+
+                respond(200, respStr, {});
+
+            } catch (const std::exception& e) {
+                LOGWARNING(ert::tracing::Logger::warning(
+                    ert::tracing::Logger::asString("Failed to decode Diameter answer: %s", e.what()),
+                    ERT_FILE_LOCATION));
+                // Raw bytes + decoder error let the director assert malformed answers.
+                respond(502,
+                        helpers::errorBody("Failed to decode Diameter answer",
+                                           helpers::undecodedMessageJson(answerMsg, e.what())),
+                        {});
+            }
+        },
+        timeoutMs, additionalLabels,
+        [respond, timeoutMs](uint32_t timedOutHbh) {
+            respond(504,
+                    helpers::errorBody("Diameter answer timeout",
+                                       {{"hopByHop", helpers::hexId(timedOutHbh)}, {"timeoutMs", timeoutMs}}),
+                    {});
+        });
+
+    if (hbh == 0) {
+        bool peerDown = !client->isReady();
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Diameter send failed (peer %s)", peerDown ? "closed" : "open"),
+            ERT_FILE_LOCATION));
+        nghttp2::asio_http2::header_map h;
+        if (peerDown) h.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+        respond(502, helpers::errorBody("Diameter send failed"), h);
     }
 }
 
