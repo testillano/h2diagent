@@ -381,8 +381,10 @@ chmod +x "${PEER_DIR}/ps.sh"
 
 # --- Generate placeholder programming ---
 if [ "${ROLE}" = "server" ] || [ "${ROLE}" = "both" ]; then
-    cat > "${PEER_DIR}/programming/server-matching.json" << EOF
-{"algorithm": "FullMatching"}
+    # Inbound requests arrive as /diameter/<if>/<cmd>/<Session-Id>: classify
+    # by /diameter/<if>/<cmd> (one provision per command, state per session).
+    cat > "${PEER_DIR}/programming/server-matching.json" << 'EOF'
+{"algorithm": "FullMatchingRegexReplace", "rgx": "(/diameter/[^/]+/[^/]+)/.*", "fmt": "$1"}
 EOF
 
     # Generate default provisions based on loaded stacks

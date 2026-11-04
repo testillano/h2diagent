@@ -7,7 +7,9 @@
 #   ... and the CCA-I travels back the same path.
 #
 # Assertions:
-#   - server peer recorded the inbound CCR on /diameter/gx/CCR
+#   - server peer recorded the inbound CCR on /diameter/gx/CCR/<Session-Id>
+#     (h2diagent appends the percent-encoded Session-Id; h2agent decodes it),
+#     matched by a literal FullMatching provision for that session
 #   - client peer recorded a 200 response carrying the mocked CCA
 #     (Result-Code 2001) with the Session-Id echoed back.
 
@@ -27,6 +29,8 @@ from conftest import (
 GX_APP_ID = 16777238
 GX_CCR_URI = "/diameter/gx/CCR"
 SESSION_ID = "client.example.com;gxf-ccri;1"
+# Inbound URI as seen by the server h2agent (path percent-decoded).
+GX_CCR_SESSION_URI = GX_CCR_URI + "/" + SESSION_ID
 
 # The client's h2agent posts outbound triggers to the client's own h2diagent
 # HTTP/2 server, which lives in the same pod (localhost:8081).
@@ -39,11 +43,12 @@ CLIENT_ENDPOINT = {
     "secure": False,
 }
 
-# Server mock: answer any Gx CCR with a CCA carrying Result-Code 2001, echoing
-# the session identifiers so we can correlate request and answer.
+# Server mock: answer the Gx CCR of SESSION_ID (literal per-session key) with a
+# CCA carrying Result-Code 2001, echoing the session identifiers so we can
+# correlate request and answer.
 SERVER_PROVISION_CCA = {
     "requestMethod": "POST",
-    "requestUri": GX_CCR_URI,
+    "requestUri": GX_CCR_SESSION_URI,
     "responseCode": 200,
     "responseHeaders": {"content-type": "application/json"},
     "responseBody": {
@@ -122,7 +127,7 @@ def test_gx_ccri_cca_i(server_admin, client_admin):
         assert status == 200, "trigger failed: status={} body={}".format(status, body)
         for _ in range(5):  # ~2s window per trigger
             time.sleep(0.4)
-            server_ccr = _find_events(server_admin.data_list(ADMIN_SERVER_DATA_URI), GX_CCR_URI)
+            server_ccr = _find_events(server_admin.data_list(ADMIN_SERVER_DATA_URI), GX_CCR_SESSION_URI)
             if server_ccr:
                 break
         if server_ccr:

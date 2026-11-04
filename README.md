@@ -34,15 +34,65 @@ It translates Diameter messages to/from JSON over HTTP/2, allowing h2agent's ful
 **Inbound flow** (SUT -> mock):
 1. SUT sends Diameter request (e.g., CCR) to h2diagent
 2. h2diagent decodes AVPs and maps them to JSON
-3. Forwards as HTTP/2 POST to h2agent (e.g., `POST /diameter/gx/CCR`)
+3. Forwards as HTTP/2 POST to h2agent (e.g., `POST /diameter/gx/CCR/<Session-Id>`, see [inbound URI](#inbound-uri-session-id-and-per-session-state))
 4. h2agent processes with provisions/transforms, responds with JSON
 5. h2diagent maps JSON back to Diameter AVPs and sends answer to SUT
 
 **Outbound flow** (mock -> SUT):
-1. h2agent client sends HTTP/2 POST to h2diagent (e.g., `POST /diameter/rx/RAR`)
+1. h2agent client sends HTTP/2 POST to h2diagent (e.g., `POST /diameter/rx/RAR`; a trailing `/<anything>`, such as the Session-Id, is accepted and ignored)
 2. h2diagent maps JSON to Diameter AVPs and sends request to SUT
 3. SUT responds with Diameter answer
 4. h2diagent maps answer to JSON and returns HTTP/2 response to h2agent
+
+### Inbound URI: Session-Id and per-session state
+
+Inbound requests are forwarded as
+
+```
+POST /diameter/<interface>/<command>/<percent-encoded Session-Id>
+```
+
+e.g. `POST /diameter/rx/RAR/af.realm.com%3B004001010020000%3B1630322271`.
+h2agent decodes the path, so its matching key and server data URI hold the
+Session-Id verbatim (`/diameter/rx/RAR/af.realm.com;004001010020000;1630322271`).
+
+Why: h2agent keys the provision state machine (`inState`/`outState`) and the
+event history by method + **received** URI. With a fixed URI per command all
+sessions would share one state machine; with the Session-Id in the path each
+session evolves its own (e.g. a RAR chain per session).
+
+> **Breaking change (2.0.0).** A provision keyed by the bare
+> `/diameter/<interface>/<command>` no longer matches with `FullMatching`.
+> Choose the classification:
+>
+> | Goal | server-matching | Provisions |
+> |------|-----------------|------------|
+> | One generic provision chain per command, state per session | `{"algorithm": "FullMatchingRegexReplace", "rgx": "(/diameter/[^/]+/[^/]+)/.*", "fmt": "$1"}` | `requestUri: "/diameter/rx/RAR"` |
+> | One literal provision per session (Session-Ids known in advance) | `{"algorithm": "FullMatching"}` | `requestUri: "/diameter/rx/RAR/<Session-Id>"` (decoded) |
+>
+> The regex takes everything after the command, not just the next segment: a
+> Session-Id containing `/` yields extra path segments once decoded. When the
+> regex does not match (no Session-Id), the URI is kept as is, so the same
+> recipe also covers bare URIs. The state machine is per received URI in both
+> cases (see h2agent [classification pipeline](https://github.com/testillano/h2agent/blob/master/docs/api/README.md#classification-pipeline)).
+
+Details:
+
+- **Encoding**: every byte outside RFC 3986 unreserved (`A-Z a-z 0-9 - . _ ~`)
+  is percent-encoded (`;` -> `%3B`, `/` -> `%2F`, UTF-8 byte-wise).
+- **Extraction**: the Session-Id (AVP 263) is read raw from the wire, before
+  and independently of the decode (AVP header hops only, normally the first
+  AVP). An undecodable request (`{_raw, _decodeError, _header}`) still gets its
+  per-session URI unless the framing is broken before the Session-Id. The same
+  value is echoed in the 5012 answer.
+- **No Session-Id** (base protocol messages never reach h2agent; otherwise a
+  SUT bug / negative test): the bare `/diameter/<interface>/<command>` is used.
+- Transforms can read the Session-Id from the body (as before) or from the URI
+  (`requestUri` source + `regexReplace`).
+- Admin queries on server data must percent-encode the URI query parameter
+  (`requestUri=...`), as `&` or `=` inside a Session-Id would break the query.
+- In load tests every session creates its own server data key: end the chain
+  with `purge`, or use a lighter data storage configuration, to bound memory.
 
 ### Fail-fast when the Diameter peer is down (`502 Bad Gateway`)
 
@@ -204,7 +254,8 @@ for you. Provide it only when you want to override the header.
 - **Client-provision requests (outbound, h2agent -> h2diagent -> peer).**
   When the request body has no `_header`, h2diagent **derives it from the request
   URI** `/diameter/<interface>/<command>` (mapping the interface to the
-  Application-Id and the command abbreviation to the command-code), sets
+  Application-Id and the command abbreviation to the command-code; anything
+  after the command, e.g. `/<Session-Id>`, is ignored), sets
   `request:true` / `flags:0x80`, and leaves `hop-by-hop-id`/`end-to-end-id` at
   `0` for the client to assign. Overriding here is practical: provide a
   **complete** `_header` to force a command-code/application-id the URI cannot

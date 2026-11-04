@@ -12,6 +12,7 @@ PRIVATE
 # DiameterClientPool wraps real diametercomm::DiameterClient objects, so the
 # pool test needs to link diametercomm and its dependency stack (same imported
 # libraries as the main h2diagent binary; see src/CMakeLists.txt).
+add_library(ut_ert_http2comm STATIC IMPORTED)
 add_library(ut_ert_metrics STATIC IMPORTED)
 add_library(ut_ert_logger STATIC IMPORTED)
 add_library(ut_ert_diametercomm STATIC IMPORTED)
@@ -19,6 +20,7 @@ add_library(ut_prometheus_cpp_pull STATIC IMPORTED)
 add_library(ut_prometheus_cpp_core STATIC IMPORTED)
 add_library(ut_boost_system STATIC IMPORTED)
 
+set_property(TARGET ut_ert_http2comm PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_http2comm.a)
 set_property(TARGET ut_ert_metrics PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_metrics.a)
 set_property(TARGET ut_ert_logger PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_logger.a)
 set_property(TARGET ut_ert_diametercomm PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_diametercomm.a)
@@ -33,6 +35,7 @@ PRIVATE
     gtest_main
     # diametercomm + its transitive deps (order matters for static linking)
     ut_ert_diametercomm
+    ut_ert_http2comm  # URLFunctions (helpers::inboundRequestPath)
     ut_ert_metrics
     ut_ert_logger
     ut_prometheus_cpp_pull

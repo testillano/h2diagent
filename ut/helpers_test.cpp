@@ -148,6 +148,194 @@ TEST(Helpers, ParseUri_Invalid) {
     EXPECT_EQ(code, 0u);
 }
 
+TEST(Helpers, ParseUri_TrailingSessionIdIgnored) {
+    uint32_t appId = 0, code = 0;
+    parseUri("/diameter/rx/AAR/af.realm.com;1;2", appId, code);
+    EXPECT_EQ(appId, 16777236u);
+    EXPECT_EQ(code, 265u);
+}
+
+TEST(Helpers, ParseUri_TrailingMultiSegmentIgnored) {
+    uint32_t appId = 0, code = 0;
+    parseUri("/diameter/gx/CCR/a/b/c", appId, code);
+    EXPECT_EQ(appId, 16777238u);
+    EXPECT_EQ(code, 272u);
+}
+
+TEST(Helpers, ParseUri_TrailingSlashOnly) {
+    uint32_t appId = 0, code = 0;
+    parseUri("/diameter/rx/STR/", appId, code);
+    EXPECT_EQ(appId, 16777236u);
+    EXPECT_EQ(code, 275u);
+}
+
+TEST(Helpers, ParseUri_QueryIgnored) {
+    uint32_t appId = 0, code = 0;
+    parseUri("/diameter/rx/ASR?x=1", appId, code);
+    EXPECT_EQ(appId, 16777236u);
+    EXPECT_EQ(code, 274u);
+}
+
+TEST(Helpers, ParseUri_CommandPrefixNotAccepted) {
+    // "AARX" must not be taken as AAR (exact command token)
+    uint32_t appId = 0, code = 0;
+    parseUri("/diameter/rx/AARX/sid", appId, code);
+    EXPECT_EQ(appId, 16777236u);
+    EXPECT_EQ(code, 0u);
+}
+
+// =============================================================================
+// extractSessionId (raw, from the wire)
+// =============================================================================
+namespace {
+
+// Raw AVP: code, flags, data (+ Vendor-Id when V-bit), padded to 4 bytes.
+std::vector<uint8_t> rawAvp(uint32_t code, uint8_t flags, const std::string& data, uint32_t vendorId = 0) {
+    const bool vendor = (flags & 0x80) != 0;
+    const size_t len = (vendor ? 12 : 8) + data.size();
+    std::vector<uint8_t> avp = {uint8_t(code >> 24), uint8_t(code >> 16), uint8_t(code >> 8), uint8_t(code), flags,
+                                uint8_t(len >> 16),  uint8_t(len >> 8),   uint8_t(len)};
+    if (vendor) {
+        avp.insert(avp.end(),
+                   {uint8_t(vendorId >> 24), uint8_t(vendorId >> 16), uint8_t(vendorId >> 8), uint8_t(vendorId)});
+    }
+    avp.insert(avp.end(), data.begin(), data.end());
+    while (avp.size() % 4) avp.push_back(0);
+    return avp;
+}
+
+// 20-byte request header (RAR on Rx) + AVPs; message length set to the total.
+std::vector<uint8_t> rawMessage(const std::vector<std::vector<uint8_t>>& avps) {
+    std::vector<uint8_t> msg = {1, 0, 0, 0, 0x80, 0, 0x01, 0x02, 0x01, 0x00, 0x00, 0x14, 0, 0, 0, 1, 0, 0, 0, 2};
+    for (const auto& a : avps) msg.insert(msg.end(), a.begin(), a.end());
+    msg[1] = uint8_t(msg.size() >> 16);
+    msg[2] = uint8_t(msg.size() >> 8);
+    msg[3] = uint8_t(msg.size());
+    return msg;
+}
+
+const std::string kSid = "af.realm.com;004001010020000;1630322271";
+
+}  // namespace
+
+TEST(Helpers, ExtractSessionId_First) {
+    auto msg = rawMessage({rawAvp(263, 0x40, kSid), rawAvp(264, 0x40, "origin.host")});
+    EXPECT_EQ(extractSessionId(msg), kSid);
+}
+
+TEST(Helpers, ExtractSessionId_NotFirst) {
+    auto msg = rawMessage(
+        {rawAvp(264, 0x40, "origin.host"), rawAvp(258, 0x40, std::string("\0\0\0\1", 4)), rawAvp(263, 0x40, kSid)});
+    EXPECT_EQ(extractSessionId(msg), kSid);
+}
+
+TEST(Helpers, ExtractSessionId_AfterVendorAvp) {
+    auto msg = rawMessage({rawAvp(1027, 0xC0, "x", 10415), rawAvp(263, 0x40, kSid)});
+    EXPECT_EQ(extractSessionId(msg), kSid);
+}
+
+TEST(Helpers, ExtractSessionId_VendorCode263Ignored) {
+    auto msg = rawMessage({rawAvp(263, 0xC0, "vendor-thing", 10415)});
+    EXPECT_EQ(extractSessionId(msg), "");
+    auto msg2 = rawMessage({rawAvp(263, 0xC0, "vendor-thing", 10415), rawAvp(263, 0x40, kSid)});
+    EXPECT_EQ(extractSessionId(msg2), kSid);
+}
+
+TEST(Helpers, ExtractSessionId_Absent) {
+    EXPECT_EQ(extractSessionId(rawMessage({rawAvp(264, 0x40, "origin.host")})), "");
+    EXPECT_EQ(extractSessionId(rawMessage({})), "");
+}
+
+TEST(Helpers, ExtractSessionId_PaddingHandled) {
+    // 5-byte data in a preceding AVP: 3 padding bytes must be skipped.
+    auto msg = rawMessage({rawAvp(264, 0x40, "abcde"), rawAvp(263, 0x40, "s;1")});
+    EXPECT_EQ(extractSessionId(msg), "s;1");
+}
+
+TEST(Helpers, ExtractSessionId_ZeroLengthValue) {
+    EXPECT_EQ(extractSessionId(rawMessage({rawAvp(263, 0x40, "")})), "");
+}
+
+TEST(Helpers, ExtractSessionId_BinaryAndUtf8Verbatim) {
+    std::string value = std::string("a\0b", 3) + "\xC3\xB1;%/";
+    EXPECT_EQ(extractSessionId(rawMessage({rawAvp(263, 0x40, value)})), value);
+}
+
+TEST(Helpers, ExtractSessionId_AvpLengthShorterThanHeader) {
+    auto avp = rawAvp(264, 0x40, "abcd");
+    avp[7] = 4;  // < 8
+    EXPECT_EQ(extractSessionId(rawMessage({avp, rawAvp(263, 0x40, kSid)})), "");
+}
+
+TEST(Helpers, ExtractSessionId_AvpLengthBeyondMessage) {
+    auto avp = rawAvp(263, 0x40, kSid);
+    avp[7] = uint8_t(avp[7] + 40);
+    EXPECT_EQ(extractSessionId(rawMessage({avp})), "");
+}
+
+TEST(Helpers, ExtractSessionId_MessageLengthBeyondBufferClamped) {
+    auto msg = rawMessage({rawAvp(263, 0x40, kSid)});
+    msg[3] = uint8_t(msg[3] + 100);          // header claims more bytes than received
+    EXPECT_EQ(extractSessionId(msg), kSid);  // Session-Id fits in the buffer
+    auto msg2 = rawMessage({rawAvp(264, 0x40, "h"), rawAvp(263, 0x40, kSid)});
+    msg2.resize(msg2.size() - 4);  // truncated inside the Session-Id
+    EXPECT_EQ(extractSessionId(msg2), "");
+}
+
+TEST(Helpers, ExtractSessionId_MessageLengthShorterThanBuffer) {
+    // Bytes beyond the header message length are not part of this message.
+    auto msg = rawMessage({rawAvp(264, 0x40, "h")});
+    auto sid = rawAvp(263, 0x40, kSid);
+    msg.insert(msg.end(), sid.begin(), sid.end());
+    EXPECT_EQ(extractSessionId(msg), "");
+}
+
+TEST(Helpers, ExtractSessionId_LaterMalformedAvpDoesNotMatter) {
+    auto bad = rawAvp(264, 0x40, "abcd");
+    bad[7] = 2;  // broken, but after the Session-Id
+    EXPECT_EQ(extractSessionId(rawMessage({rawAvp(263, 0x40, kSid), bad})), kSid);
+}
+
+TEST(Helpers, ExtractSessionId_ShortMessage) {
+    EXPECT_EQ(extractSessionId(std::vector<uint8_t>(19, 0)), "");
+    EXPECT_EQ(extractSessionId(std::vector<uint8_t>{}), "");
+}
+
+TEST(Helpers, ExtractSessionId_TruncatedAvpHeader) {
+    auto msg = rawMessage({});
+    msg.insert(msg.end(), {0, 0, 1, 7});  // 4 bytes: incomplete AVP header
+    msg[3] = uint8_t(msg.size());
+    EXPECT_EQ(extractSessionId(msg), "");
+}
+
+// =============================================================================
+// inboundRequestPath
+// =============================================================================
+TEST(Helpers, InboundRequestPath_NoSessionId) { EXPECT_EQ(inboundRequestPath("rx", "RAR", ""), "/diameter/rx/RAR"); }
+
+TEST(Helpers, InboundRequestPath_TypicalSessionId) {
+    EXPECT_EQ(inboundRequestPath("rx", "RAR", kSid), "/diameter/rx/RAR/af.realm.com%3B004001010020000%3B1630322271");
+}
+
+TEST(Helpers, InboundRequestPath_ReservedCharactersEncoded) {
+    EXPECT_EQ(inboundRequestPath("gx", "CCR", "a/b@c:d|e%f g"), "/diameter/gx/CCR/a%2Fb%40c%3Ad%7Ce%25f%20g");
+}
+
+TEST(Helpers, InboundRequestPath_UnreservedKept) {
+    EXPECT_EQ(inboundRequestPath("gx", "CCR", "A-z_0.9~"), "/diameter/gx/CCR/A-z_0.9~");
+}
+
+TEST(Helpers, InboundRequestPath_Utf8ByteWise) {
+    EXPECT_EQ(inboundRequestPath("sy", "SNR", "\xC3\xB1"), "/diameter/sy/SNR/%C3%B1");
+}
+
+TEST(Helpers, InboundRequestPath_RoundTripWithOutboundParser) {
+    uint32_t appId = 0, code = 0;
+    parseUri(inboundRequestPath("rx", "ASR", kSid), appId, code);
+    EXPECT_EQ(appId, 16777236u);
+    EXPECT_EQ(code, 274u);
+}
+
 // =============================================================================
 // normalizeTransport (CLI --diameter-*-transport parsing)
 // =============================================================================

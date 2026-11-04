@@ -654,13 +654,14 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     LOGDEBUG(ert::tracing::Logger::debug(
         ert::tracing::Logger::asString("Diameter -> JSON: %s", jsonBody.dump().c_str()), ERT_FILE_LOCATION));
 
-    // 2. Build HTTP/2 POST to h2agent
-    std::string path = "/diameter/" + interface + "/" + command;
+    // 2. Build HTTP/2 POST to h2agent. The Session-Id is read raw from the wire
+    // (not from the decoded JSON), so it is also available for undecodable
+    // messages; it makes the URI per session (h2agent state machine per session)
+    // and is echoed in the 5012 answer.
+    std::string sessionId = helpers::extractSessionId(msg);
+    std::string path = helpers::inboundRequestPath(interface, command, sessionId);
     std::string fullUri = "http://" + config_.h2agentHost + ":" + std::to_string(config_.h2agentPort) + path;
     std::string bodyStr = jsonBody.dump();
-    std::string sessionId;
-    auto itSid = jsonBody.find("Session-Id");
-    if (itSid != jsonBody.end() && itSid->is_string()) sessionId = itSid->get<std::string>();
 
     // 3. Send HTTP/2 request to h2agent and handle response.
     // Check only the atomic here: the session pointer is mutated on the
@@ -911,46 +912,10 @@ void Gateway::onH2agentOutboundRequest(
         }
 
         // Inject _header from URI path if not present
-        // URI format: /diameter/<interface>/<command>
+        // URI format: /diameter/<interface>/<command>[/<anything>] (e.g. a
+        // per-session suffix, same shape as the inbound URIs; ignored here).
         if (!reqJson.contains("_header")) {
-            // Extract command info from URI (e.g., /diameter/gx/CCR)
-
-            // Parse interface from URI
-            // Expected: /diameter/<interface>/<command>
-            size_t firstSlash = uri.find('/', 1);  // skip leading /
-            if (firstSlash != std::string::npos) {
-                size_t secondSlash = uri.find('/', firstSlash + 1);
-                if (secondSlash != std::string::npos) {
-                    std::string iface = uri.substr(firstSlash + 1, secondSlash - firstSlash - 1);
-                    std::string cmd = uri.substr(secondSlash + 1);
-
-                    // Reverse-map interface to app-id
-                    if (iface == "gx")
-                        appId = 16777238;
-                    else if (iface == "rx")
-                        appId = 16777236;
-                    else if (iface == "sy")
-                        appId = 16777302;
-                    else if (iface == "cc")
-                        appId = 4;
-
-                    // Reverse-map command abbreviation to code
-                    if (cmd == "CCR" || cmd == "CCA")
-                        commandCode = 272;
-                    else if (cmd == "AAR" || cmd == "AAA")
-                        commandCode = 265;
-                    else if (cmd == "RAR" || cmd == "RAA")
-                        commandCode = 258;
-                    else if (cmd == "ASR" || cmd == "ASA")
-                        commandCode = 274;
-                    else if (cmd == "STR" || cmd == "STA")
-                        commandCode = 275;
-                    else if (cmd == "ACR" || cmd == "ACA")
-                        commandCode = 271;
-                    else if (cmd == "SNR" || cmd == "SNA")
-                        commandCode = 300;
-                }
-            }
+            helpers::parseUri(uri, appId, commandCode);
 
             reqJson["_header"] = {
                 {"version", 1},

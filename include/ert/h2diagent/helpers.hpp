@@ -6,9 +6,11 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <ert/http2comm/URLFunctions.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -98,7 +100,54 @@ inline bool isRequest(const std::vector<uint8_t>& msg) {
     return (msg[4] & 0x80) != 0;
 }
 
-// Parse interface and command from URI (e.g., /diameter/gx/CCR -> appId=16777238, code=272)
+// Session-Id (AVP 263, base protocol, no Vendor-Id) read raw from the wire: no
+// dictionary, no codec, so it is available even when the message cannot be
+// decoded. RFC 6733 places it first (< Session-Id >), so the loop normally
+// stops at the first AVP; a misplaced one is still found by hopping AVP headers
+// (no AVP data is parsed). The value is returned byte-for-byte (UTF8String is
+// not validated: it is used as a key). Returns "" when absent, or when the
+// framing up to it is broken (AVP length shorter than its header, or beyond the
+// message length / buffer).
+inline std::string extractSessionId(const std::vector<uint8_t>& msg) {
+    constexpr uint32_t kSessionIdCode = 263;
+    constexpr uint8_t kVendorBit = 0x80;
+    constexpr size_t kMessageHeaderLen = 20;
+    constexpr size_t kAvpHeaderLen = 8;
+    constexpr size_t kVendorAvpHeaderLen = 12;
+
+    if (msg.size() < kMessageHeaderLen) return "";
+    const size_t msgLen = (size_t(msg[1]) << 16) | (size_t(msg[2]) << 8) | size_t(msg[3]);
+    const size_t end = std::min(msg.size(), msgLen);
+    size_t pos = kMessageHeaderLen;
+    while (pos + kAvpHeaderLen <= end) {
+        const uint32_t code = (uint32_t(msg[pos]) << 24) | (uint32_t(msg[pos + 1]) << 16) |
+                              (uint32_t(msg[pos + 2]) << 8) | uint32_t(msg[pos + 3]);
+        const uint8_t flags = msg[pos + 4];
+        const size_t len = (size_t(msg[pos + 5]) << 16) | (size_t(msg[pos + 6]) << 8) | size_t(msg[pos + 7]);
+        const bool vendor = (flags & kVendorBit) != 0;
+        const size_t hdrLen = vendor ? kVendorAvpHeaderLen : kAvpHeaderLen;
+        if (len < hdrLen || pos + len > end) return "";  // broken framing
+        if (code == kSessionIdCode && !vendor) return std::string(msg.begin() + pos + hdrLen, msg.begin() + pos + len);
+        pos += (len + 3) & ~size_t(3);  // AVPs are padded to 4 bytes
+    }
+    return "";
+}
+
+// URI path of the HTTP/2 POST forwarded to h2agent for an inbound Diameter
+// request: /diameter/<interface>/<command>[/<percent-encoded Session-Id>].
+// The Session-Id makes the URI (and so the h2agent state machine and server
+// data key) per session. Every byte outside RFC 3986 unreserved is
+// percent-encoded (';', '/', '%', UTF-8...), so the segment is always URI-safe.
+// No Session-Id: bare /diameter/<interface>/<command>.
+inline std::string inboundRequestPath(const std::string& interface, const std::string& command,
+                                      const std::string& sessionId) {
+    std::string path = "/diameter/" + interface + "/" + command;
+    if (!sessionId.empty()) path += "/" + ert::http2comm::URLFunctions::encode(sessionId);
+    return path;
+}
+
+// Parse interface and command from URI (e.g., /diameter/gx/CCR -> appId=16777238, code=272).
+// Anything after the command (e.g. /diameter/rx/AAR/<session-id>) is ignored.
 inline void parseUri(const std::string& uri, uint32_t& appId, uint32_t& commandCode) {
     appId = 0;
     commandCode = 0;
@@ -108,7 +157,9 @@ inline void parseUri(const std::string& uri, uint32_t& appId, uint32_t& commandC
     if (secondSlash == std::string::npos) return;
 
     std::string iface = uri.substr(firstSlash + 1, secondSlash - firstSlash - 1);
-    std::string cmd = uri.substr(secondSlash + 1);
+    size_t cmdEnd = uri.find_first_of("/?", secondSlash + 1);
+    std::string cmd =
+        uri.substr(secondSlash + 1, (cmdEnd == std::string::npos) ? std::string::npos : cmdEnd - secondSlash - 1);
 
     if (iface == "gx")
         appId = 16777238;
