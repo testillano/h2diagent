@@ -273,10 +273,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 libsctp1 curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /code/build/${build_type}/bin/h2diagent /opt/h2diagent
+# Binary in the PATH, same place as the downstream images
+COPY --from=build /code/build/${build_type}/bin/h2diagent /bin/h2diagent
+
+# Compatibility: the binary was under /opt up to 2.0.x
+RUN ln -s /bin/h2diagent /opt/h2diagent
 
 EXPOSE 3868 8080 8085
 # EXPOSE 8074  # admin port (future)
 
-ENTRYPOINT ["/opt/h2diagent"]
+ENTRYPOINT ["/bin/h2diagent"]
 CMD []

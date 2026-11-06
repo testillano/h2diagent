@@ -74,7 +74,7 @@ spec:
               wait_tcp {{ .Values.diameter.peerHost | quote }} {{ .Values.diameter.peerPort }} || exit 1
               {{- end }}
               echo "[wait] dependencies ready; starting h2diagent"
-              exec /opt/h2diagent "$@"
+              exec /bin/h2diagent "$@"
             - h2diagent
           args:
             - "--diameter-port"
