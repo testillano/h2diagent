@@ -307,7 +307,7 @@ the dictionary has no rules for the command, the JSON order is kept.
 | Float32           | number    | `"Some-Float32": 1.5`                  | IEEE 754 single |
 | Float64           | number    | `"Some-Float64": 1.5`                  | IEEE 754 double |
 | Enumerated        | number    | `"CC-Request-Type": 1`                 | signed 32-bit (enum value; no alias in flat JSON) |
-| OctetString       | string (hex) | `"Framed-IP-Address": "c0a80001"`   | raw bytes; `"af01"` -> 0xAF 0x01 |
+| OctetString       | string (hex), or a readable form (object) | `"Framed-IP-Address": "c0a80001"` / `{"ipv4": "192.168.0.1"}` | raw bytes; `"af01"` -> 0xAF 0x01 |
 | UTF8String        | string    | `"Subscription-Id-Data": "1234567890"` | UTF-8 text |
 | DiameterIdentity  | string    | `"Origin-Host": "pcef.example.com"`    | text |
 | DiameterURI       | string    | `"Redirect-Server-Address": "aaa://host:3868"` | text |
@@ -327,6 +327,35 @@ length). Examples:
 ```
 `"af01"` decodes to the two bytes 0xAF 0x01. The hex must be valid and even
 length; invalid hex is an error (do not rely on silent parsing).
+
+**Readable forms (outbound JSON only).** Instead of the hex, an OctetString may
+be written as an object with exactly ONE key, which names how its bytes are
+built. The key never depends on the AVP: which form suits an AVP is its 3GPP
+definition, as it is when writing the hex by hand. The wire bytes are the same
+as with the equivalent hex, and decoded messages keep giving the hex back.
+
+| Form | Bytes | Typical AVPs | Example |
+|---|---|---|---|
+| `{"hex": "..."}` | the hex bytes (same as the plain string) | any | `{"hex": "0a8136a5"}` |
+| `{"text": "..."}` | UTF-8 bytes of the text | `AF-Application-Identifier`, `Called-Station-Id`, `AF-Charging-Identifier` | `{"text": "dnn_mbb.com"}` |
+| `{"ipv4": "..."}` | 4 bytes of the address | `Framed-IP-Address` | `{"ipv4": "10.129.54.165"}` |
+| `{"ipv6": "..."}` | 16 bytes of the address | IPv6 addresses held in OctetStrings | `{"ipv6": "2001:db8::1"}` |
+| `{"ipv6Prefix": "<addr>/<len>"}` | RFC 3162: reserved byte, length, prefix bytes | `Framed-IPv6-Prefix` | `{"ipv6Prefix": "2001:db8:1:2::/64"}` |
+| `{"msTimeZone": "+-hh:mm[+dst]"}` | TS 29.061: TS 24.008 time zone (quarters of an hour, BCD, sign bit) + DST hours (0..2) | `3GPP-MS-TimeZone` | `{"msTimeZone": "-08:00+1"}` (`2b01`) |
+| `{"uli": {...}}` | TS 29.061: location type + BCD MCC/MNC + TAC / ECI | `3GPP-User-Location-Info` | see below |
+
+```json
+"AF-Application-Identifier": {"text": "urn%3Aurn-xxx%3A3gpp-service.ims.icsi.mmtel"},
+"Framed-IP-Address": {"ipv4": "10.129.54.165"},
+"3GPP-User-Location-Info": {"uli": {"type": "tai", "mcc": "460", "mnc": "00", "tac": 101}},
+"3GPP-User-Location-Info": {"uli": {"type": "tai-ecgi", "mcc": "214", "mnc": "07", "tac": 1, "eci": "0x3039"}}
+```
+
+`uli` types: `tai` (128: `tac`), `ecgi` (129: `eci`, 28 bits) and `tai-ecgi`
+(130: both). `mcc` is 3 digits and `mnc` 2 or 3 (strings: leading zeros
+matter); `tac` / `eci` are decimal numbers or `"0x..."` hex strings. An invalid
+form is an encoding error, as an invalid hex is. Address-format AVPs (e.g.
+`Host-IP-Address`) are not OctetStrings: they already take the human form.
 
 IMPORTANT for IP-bearing OctetStrings: many 3GPP AVPs (e.g. `Framed-IP-Address`,
 AVP code 8) are declared **OctetString** and carry the **4 raw bytes** of the
@@ -388,7 +417,9 @@ parentheses next to the numeric value.
 
 Write each AVP value in the canonical representation for its dictionary format:
 numbers for integer/unsigned/float/enum, human text for the text formats, UNIX
-epoch for Time, hex for OctetString, and nested objects/arrays for Grouped. The
+epoch for Time, hex for OctetString (or one of its readable forms: `text`,
+`ipv4`, `ipv6`, `ipv6Prefix`, `msTimeZone`, `uli`), and nested objects/arrays
+for Grouped. The
 engine encodes to the normative Diameter wire bytes according to that format.
 
 ## Negative testing
