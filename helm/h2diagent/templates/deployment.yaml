@@ -88,6 +88,8 @@ spec:
             - {{ .Values.diameter.peerHost | quote }}
             - "--diameter-peer-port"
             - {{ .Values.diameter.peerPort | quote }}
+            - "--diameter-connections"
+            - {{ .Values.diameter.connections | quote }}
             {{- end }}
             - "--origin-host"
             - {{ .Values.originHost | quote }}

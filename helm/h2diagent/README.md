@@ -45,6 +45,8 @@ server/PCRF mock-brain case turns the sidecar on.
 | `role` | `server` | Diameter role: `server` (listen), `client` (dial), `both`. |
 | `diameter.serverPort` | `3868` | Inbound Diameter listener (server/both; `0` disables). |
 | `diameter.peerHost` / `peerPort` | `""` / `3868` | Remote peer dialed in client/both mode. |
+| `diameter.connections` | `1` | Outbound connections to the peer (`--diameter-connections`, client/both). `N>1` = round-robin pool, TCP only. |
+| `diameter.timeoutMs` | `5000` | Transaction timeout (`--diameter-timeout-ms`); expired outbound requests get a 504. |
 | `http2ServerPort` | `8081` | HTTP/2 server where an (external) director posts outbound triggers. Exposed in the Service as `http2-trigger`. |
 | `prometheusPort` | `8085` | Gateway metrics port (Service `gw-metrics`). |
 

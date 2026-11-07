@@ -56,7 +56,12 @@ diameter:
   peerHost: ""
   peerPort: 3868
   watchdogInterval: 30
+  # Transaction timeout (--diameter-timeout-ms): no answer within it -> 504 to
+  # the director (outbound) and the request is counted as timed out.
   timeoutMs: 5000
+  # Outbound client connections to the peer (--diameter-connections), client/both
+  # only. N>1 is a round-robin pool (TCP only: SCTP + N>1 is rejected at start).
+  connections: 1
   # tcp | sctp  (sctp is single-homing; CT uses tcp)
   serverTransport: tcp
   clientTransport: tcp
