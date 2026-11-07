@@ -9,10 +9,12 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <boost/asio.hpp>
 #include <csignal>
 #include <cstring>
+#include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/h2diagent/helpers.hpp>
 #include <ert/tracing/Logger.hpp>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -103,6 +105,11 @@ void usage(const char* name) {
         << "                                  (e.g. CC-Request-Type). Repeatable for several labels.\n"
         << "                                  Use LOW-cardinality AVPs only. (application_id is always\n"
         << "                                  present, taken from the message header.)\n\n"
+        << "  --decode-as <AVP>=<form>        Decode this OctetString AVP (by name) towards h2agent in a\n"
+        << "                                  readable form instead of hex: {\"<form>\": ...}, or\n"
+        << "                                  {\"hex\": ...} when its bytes do not fit. Forms: text|ipv4|\n"
+        << "                                  ipv6|ipv6Prefix|msTimeZone|uli (the readable forms accepted\n"
+        << "                                  outbound). Repeatable. Default: hex for every OctetString.\n\n"
         << "  [-V|--version]                  Program version\n"
         << "  [-h|--help]                     This help\n"
         << std::endl;
@@ -163,6 +170,7 @@ int main(int argc, char* argv[]) {
         {"prometheus-port", required_argument, nullptr, 0},
         {"disable-metrics", no_argument, nullptr, 0},
         {"metrics-additional-label", required_argument, nullptr, 0},
+        {"decode-as", required_argument, nullptr, 0},
         {"version", no_argument, nullptr, 'V'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
@@ -242,6 +250,15 @@ int main(int argc, char* argv[]) {
                     config.metricsEnabled = false;
                 else if (name == "metrics-additional-label")
                     config.metricsAdditionalLabelAvps.push_back(optarg);
+                else if (name == "decode-as") {
+                    ert::h2diagent::helpers::DecodeAsEntry entry;
+                    std::string err;
+                    if (!ert::h2diagent::helpers::parseDecodeAs(optarg, entry, err)) {
+                        std::cerr << "Invalid --decode-as: " << err << std::endl;
+                        return 1;
+                    }
+                    config.decodeAs.push_back(entry);
+                }
                 break;
             }
             case 'l':
@@ -336,7 +353,12 @@ int main(int argc, char* argv[]) {
 
     // Create and start gateway
     ert::h2diagent::Gateway gateway(io, config);
-    gateway.start();
+    try {
+        gateway.start();
+    } catch (const std::runtime_error& e) {  // invalid configuration found at start (e.g. --decode-as)
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
 
     // Run io_context with worker threads
     std::vector<std::thread> threads;

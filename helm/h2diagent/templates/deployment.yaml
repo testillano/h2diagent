@@ -109,6 +109,10 @@ spec:
             - {{ .Values.diameter.serverTransport | quote }}
             - "--diameter-client-transport"
             - {{ .Values.diameter.clientTransport | quote }}
+            {{- range $avp, $form := .Values.diameter.decodeAs }}
+            - "--decode-as"
+            - {{ printf "%s=%s" $avp $form | quote }}
+            {{- end }}
             {{- $brainHost := include "h2diagent.brainHost" . }}
             {{- if $brainHost }}
             - "--h2agent-host"

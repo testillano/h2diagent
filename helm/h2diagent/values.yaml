@@ -62,6 +62,14 @@ diameter:
   # Outbound client connections to the peer (--diameter-connections), client/both
   # only. N>1 is a round-robin pool (TCP only: SCTP + N>1 is rejected at start).
   connections: 1
+  # Readable decoding of OctetString AVPs towards h2agent (--decode-as):
+  # AVP name -> form (text|ipv4|ipv6|ipv6Prefix|msTimeZone|uli). Such an AVP
+  # arrives as {"<form>": ...}, or {"hex": ...} when its bytes do not fit.
+  # Empty (default): every OctetString as hex. e.g.:
+  #   decodeAs:
+  #     3GPP-User-Location-Info: uli
+  #     Framed-IP-Address: ipv4
+  decodeAs: {}
   # tcp | sctp  (sctp is single-homing; CT uses tcp)
   serverTransport: tcp
   clientTransport: tcp

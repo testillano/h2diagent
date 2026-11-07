@@ -328,11 +328,12 @@ length). Examples:
 `"af01"` decodes to the two bytes 0xAF 0x01. The hex must be valid and even
 length; invalid hex is an error (do not rely on silent parsing).
 
-**Readable forms (outbound JSON only).** Instead of the hex, an OctetString may
-be written as an object with exactly ONE key, which names how its bytes are
-built. The key never depends on the AVP: which form suits an AVP is its 3GPP
-definition, as it is when writing the hex by hand. The wire bytes are the same
-as with the equivalent hex, and decoded messages keep giving the hex back.
+**Readable forms.** Instead of the hex, an OctetString may be written as an
+object with exactly ONE key, which names how its bytes are built. The key never
+depends on the AVP: which form suits an AVP is its 3GPP definition, as it is
+when writing the hex by hand. The wire bytes are the same as with the
+equivalent hex. Decoded messages give the hex back, unless the AVP is
+configured with [`--decode-as`](#readable-decoding---decode-as).
 
 | Form | Bytes | Typical AVPs | Example |
 |---|---|---|---|
@@ -356,6 +357,44 @@ as with the equivalent hex, and decoded messages keep giving the hex back.
 matter); `tac` / `eci` are decimal numbers or `"0x..."` hex strings. An invalid
 form is an encoding error, as an invalid hex is. Address-format AVPs (e.g.
 `Host-IP-Address`) are not OctetStrings: they already take the human form.
+
+<a name="readable-decoding---decode-as"></a>**Readable decoding (`--decode-as`).**
+The dictionary only says OctetString, so h2diagent cannot guess what the bytes
+of an inbound AVP hold: by default they reach h2agent in hex (deterministic,
+stable for matching). A deployment which knows it says so, per AVP, with
+`--decode-as <AVP>=<form>` (repeatable; chart value `diameter.decodeAs`), for
+every message decoded towards h2agent (inbound requests and answers to outbound
+ones), at any depth:
+
+```bash
+h2diagent ... --decode-as 3GPP-User-Location-Info=uli --decode-as Framed-IP-Address=ipv4
+```
+
+```json
+"3GPP-User-Location-Info": {"uli": {"type": "tai", "mcc": "460", "mnc": "00", "tac": 101}},
+"Framed-IP-Address": {"ipv4": "10.129.54.165"}
+```
+
+so a transformation reads `/requestBody/3GPP-User-Location-Info/uli/tac`, with
+no decoding filter. The forms are those above (`text`, `ipv4`, `ipv6`,
+`ipv6Prefix`, `msTimeZone`, `uli`), read back:
+
+- A configured AVP is **always an object with one key**: its form, or
+  `{"hex": "..."}` when its bytes do not fit it (e.g. 5 bytes for `ipv4`, a
+  `uli` type other than TAI/ECGI/TAI+ECGI, `text` which is not UTF-8 or holds a
+  NUL). A form is used only if encoding it back gives the same bytes, so any
+  decoded value echoed back is the same on the wire. Decoding never fails
+  because of it (a debug trace tells it happened).
+- An AVP unknown in every loaded dictionary, or not declared OctetString
+  (UTF8String and Address already arrive readable), is a startup error.
+- Without `--decode-as` nothing changes; the cost is paid only by the
+  configured AVPs (one small parse and a re-encode each).
+
+Gateway option or h2agent filter? Use `--decode-as` for the structured
+Diameter values a test suite reads often (ULI, MS-TimeZone, IPv6 prefix) when
+you own the gateway deployment; use the h2agent byte filters (`hexToText`,
+`hexToIp`, see the h2agent API README) for a field read once, or for hex which
+does not come through a gateway.
 
 IMPORTANT for IP-bearing OctetStrings: many 3GPP AVPs (e.g. `Framed-IP-Address`,
 AVP code 8) are declared **OctetString** and carry the **4 raw bytes** of the
@@ -569,6 +608,9 @@ Diameter:
   --diameter-connections <N>      Number of outbound Diameter client connections to
                                   the peer (default: 1). N>1 opens a round-robin pool.
                                   TCP only; with sctp, N>1 fails fast at startup.
+  --decode-as <AVP>=<form>        Decode this OctetString AVP towards h2agent in a readable
+                                  form (text|ipv4|ipv6|ipv6Prefix|msTimeZone|uli) instead of
+                                  hex; {"hex": ...} when its bytes do not fit. Repeatable.
 
 Diameter TLS (TCP only; SCTP/DTLS not supported):
   --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS

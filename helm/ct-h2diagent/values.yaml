@@ -48,6 +48,11 @@ server:
     - gx
   diameter:
     serverPort: 3868
+    # CT of --decode-as (gxf_decode_as_test.py); the client peer keeps hex.
+    decodeAs:
+      Framed-IP-Address: ipv4
+      3GPP-User-Location-Info: uli
+      3GPP-MS-TimeZone: msTimeZone
   h2agent:
     enabled: true
     adminPort: 8074

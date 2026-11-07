@@ -35,6 +35,7 @@ Copyright (c) 2024 Eduardo Ramos
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace ert {
@@ -110,6 +111,9 @@ struct GatewayConfig {
     // them LOW-cardinality (e.g. CC-Request-Type). Empty = none. (The
     // application_id label is always present, taken from the message header.)
     std::vector<std::string> metricsAdditionalLabelAvps;
+    // Optional: readable form of OctetString AVPs decoded towards h2agent
+    // (--decode-as <AVP>=<form>, see DecodeAs.hpp). Empty = hex, as always.
+    std::vector<std::pair<std::string, std::string>> decodeAs;
     int workers{0};  // 0 = nproc
 };
 
@@ -130,6 +134,8 @@ class Gateway {
 
     /**
      * Start all services (Diameter server/client, HTTP/2 client/server).
+     * Throws std::runtime_error on an invalid --decode-as (resolved against
+     * the loaded dictionaries, before any service starts).
      */
     void start();
 
@@ -210,6 +216,8 @@ class Gateway {
 
     // Multi-stack dictionaries indexed by Application-Id
     std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;
+    // --decode-as resolved against the dictionaries at start (empty: plain hex)
+    diametercodec::codec::DecodeOptions decodeOptions_;
     diametercodec::stack::Dictionary defaultDictionary_;  // fallback for unknown appId
 
     // HTTP/2 client session (towards h2agent)

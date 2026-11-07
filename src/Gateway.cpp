@@ -14,11 +14,13 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <chrono>
 #include <ert/diametercodec/codec/Avp.hpp>
 #include <ert/diametercodec/codec/Message.hpp>
+#include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/tracing/Logger.hpp>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <stdexcept>
 
 namespace ert {
 namespace h2diagent {
@@ -184,6 +186,16 @@ void Gateway::start() {
     if (dictionaries_.empty()) {
         LOGWARNING(
             ert::tracing::Logger::warning("No dictionaries loaded - codec operations will fail", ERT_FILE_LOCATION));
+    }
+
+    // --decode-as: AVP names -> ids, once (fail fast before any service starts)
+    std::string decodeAsErr;
+    if (!helpers::resolveDecodeAs(config_.decodeAs, dictionaries_, decodeOptions_, decodeAsErr))
+        throw std::runtime_error("Invalid --decode-as: " + decodeAsErr);
+    for (const auto& [name, form] : config_.decodeAs) {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Decoding OctetString AVP '%s' as '%s'", name.c_str(), form.c_str()),
+            ERT_FILE_LOCATION));
     }
 
     // --- Prometheus metrics ---
@@ -645,7 +657,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     try {
         diametercodec::codec::Message diameterMsg;
         diameterMsg.decode(msg.data(), msg.size(), dict);
-        jsonBody = diameterMsg.toJson(dict);
+        jsonBody = diameterMsg.toJson(dict, decodeOptions_);
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
             ert::tracing::Logger::asString("Failed to decode Diameter message (forwarded as _raw): %s", e.what()),
@@ -1010,7 +1022,7 @@ void Gateway::sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
                 diametercodec::codec::Message answer;
                 answer.decode(answerMsg.data(), answerMsg.size(), dict);
 
-                nlohmann::json respJson = answer.toJson(dict);
+                nlohmann::json respJson = answer.toJson(dict, decodeOptions_);
                 std::string respStr = respJson.dump();
 
                 LOGINFORMATIONAL(ert::tracing::Logger::informational(
