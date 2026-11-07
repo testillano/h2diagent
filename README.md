@@ -899,6 +899,19 @@ Counters provided by h2diagent:
    h2diagent_http2_client_responses_received_counter [source] [method] [status_code]
 ```
 
+#### Process resources
+
+```
+Provided by metrics library (ProcessCollector):
+
+   process_cpu_seconds_total [source]
+   process_resident_memory_bytes [source]
+   process_virtual_memory_bytes [source]
+   process_open_fds [source]
+   process_max_fds [source]
+   process_threads [source]
+```
+
 #### Examples
 
 ```bash

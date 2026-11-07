@@ -200,6 +200,8 @@ void Gateway::start() {
             LOGWARNING(ert::tracing::Logger::warning(
                 ert::tracing::Logger::asString("Prometheus metrics on %s", bindAddressPort.c_str()),
                 ERT_FILE_LOCATION));
+            // Process resources (CPU, memory, fds, threads) for the dashboard 'Process Resources' row
+            metrics_->enableProcessMetrics(config_.productName);
             // HTTP/2 metrics (Gateway-level instrumentation)
             ert::metrics::labels_t familyLabels = {};
             diameter_answers_sent_counter_family_ptr_ =
