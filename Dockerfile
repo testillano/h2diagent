@@ -8,13 +8,15 @@
 #   deps      - All third-party libraries compiled and installed
 #   build     - Project compilation
 #   unit-test - Lightweight image for running unit tests
-#   runtime   - Production image with only the binary
+#   runtime   - Production image with only the binary (stripped)
+#   runtime-debug - runtime + debug info + gdb (same build), for core analysis
 #
-# Usage:
+# Usage (always give --target: the last stage is runtime-debug):
 #   docker build --target deps      -t h2diagent_builder .
 #   docker build --target build     -t h2diagent_build .
 #   docker build --target unit-test -t h2diagent_ut .
 #   docker build --target runtime   -t h2diagent .
+#   docker build --target runtime-debug -t h2diagent:latest-debug .
 # =============================================================================
 
 FROM ubuntu:24.04 AS deps
@@ -250,6 +252,20 @@ WORKDIR /code
 
 RUN cmake -DCMAKE_BUILD_TYPE=${build_type} . && make -j${make_procs}
 
+# Release: strip the binary and keep its debug info apart, under
+# /code/debug/.build-id/<xx>/<rest>.debug, for the runtime-debug image (a core
+# of the stripped runtime is symbolized by the file of the SAME build: gdb
+# matches it by build-id). Debug builds keep their symbols.
+RUN mkdir -p /code/debug && \
+    if [ "${build_type}" = "Release" ] ; then \
+      b=/code/build/${build_type}/bin/h2diagent ; \
+      id=$(readelf -n ${b} | awk '/Build ID/ { print $3 }') ; \
+      [ -n "${id}" ] || { echo "No build-id in ${b}" ; exit 1 ; } ; \
+      d=/code/debug/.build-id/$(echo ${id} | cut -c1-2) ; mkdir -p ${d} ; \
+      objcopy --only-keep-debug ${b} ${d}/$(echo ${id} | cut -c3-).debug && \
+      strip --strip-debug --strip-unneeded ${b} ; \
+    fi
+
 # =============================================================================
 # Stage: unit-test
 # =============================================================================
@@ -284,3 +300,15 @@ EXPOSE 3868 8080 8085
 
 ENTRYPOINT ["/bin/h2diagent"]
 CMD []
+
+# =============================================================================
+# Stage: runtime-debug (runtime + debug info + gdb; tag '<tag>-debug')
+# =============================================================================
+# Same binary as the runtime image (same build), plus its debug info and gdb:
+# run it instead of the runtime to analyze a crash in place, or load a core of
+# the runtime image (gdb /bin/h2diagent <core>) to get symbolized stacks.
+FROM runtime AS runtime-debug
+
+RUN apt-get update && apt-get install -y --no-install-recommends gdb \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY --from=build /code/debug/ /usr/lib/debug/

@@ -544,7 +544,23 @@ Or directly with Docker:
 $ docker build --target runtime   -t h2diagent .
 $ docker build --target deps      -t h2diagent_builder .
 $ docker build --target unit-test -t h2diagent_ut .
+$ docker build --target runtime-debug -t h2diagent:latest-debug .
 ```
+
+### Debug image (core analysis)
+
+The runtime image ships a stripped binary, so a core dump of it gives bare
+addresses. Each runtime tag has a `<tag>-debug` companion (e.g. `latest-debug`,
+`2.2.0-debug`) built from the same build: identical binary plus its debug info
+(`/usr/lib/debug/.build-id`, matched by build-id) and `gdb`. Either deploy it in
+place of the runtime image to reproduce a crash with symbols, or analyze a core
+of the runtime image there:
+
+```bash
+$ docker run --rm -it -v $(pwd):/cores --entrypoint gdb ghcr.io/testillano/h2diagent:2.2.0-debug /bin/h2diagent /cores/core
+```
+
+The tags must match (`readelf -n /bin/h2diagent` shows the build-id in both).
 
 ### Building against a local (unpublished) diametercomm / diametercodec
 
