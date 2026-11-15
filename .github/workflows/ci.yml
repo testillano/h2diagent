@@ -43,6 +43,82 @@ jobs:
       doxyfile_overrides: |
         PROJECT_NUMBER=${{ github.ref_name }}
 
+  # Unit test coverage for the GitHub Pages site (coverage/, badge.json): a Debug
+  # build (--coverage, cmake/compiler_flags.cmake) run in its own container.
+  build_coverage:
+    needs: format_style
+    name: Build coverage image
+    runs-on: ubuntu-latest
+    steps:
+    -
+      name: Check out the repo
+      uses: actions/checkout@v4
+    -
+      name: Login to GitHub Container Registry
+      uses: docker/login-action@v1
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        logout: true
+    -
+      name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    -
+      name: Build coverage image (debug build stage)
+      uses: docker/build-push-action@v2
+      with:
+        tags: ghcr.io/testillano/h2diagent:latest-cov
+        file: Dockerfile
+        target: build
+        build-args: build_type=Debug
+        context: .
+        platforms: linux/amd64
+        push: true
+
+  unit_tests_and_coverage:
+    needs: build_coverage
+    name: Run unit tests and build the coverage report
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/testillano/h2diagent:latest-cov
+      options: "--entrypoint sh"
+    steps:
+    -
+      name: Install coverage tools
+      run: apt-get update && apt-get install -y lcov bc
+    -
+      name: Run unit tests and generate coverage
+      run: |
+        cd /code
+        CAPTURE_OPTS="--ignore-errors empty --ignore-errors inconsistent --ignore-errors mismatch"
+        lcov --capture --directory ./src --directory ./ut --initial --output-file base-coverage.info ${CAPTURE_OPTS}
+        ./build/Debug/bin/unit-test
+        lcov --capture --directory ./src --directory ./ut --output-file test-coverage.info --ignore-errors gcov,gcov ${CAPTURE_OPTS}
+        lcov -a base-coverage.info -a test-coverage.info -o total-coverage.info
+        lcov --extract total-coverage.info "/code/src/*" "/code/include/*" --output-file extracted-coverage.info
+        lcov --remove extracted-coverage.info "*/main.cpp" --output-file final-coverage.info --ignore-errors unused
+        genhtml final-coverage.info --output-directory /code/coverage
+        cp final-coverage.info /code/coverage/lcov.info
+    -
+      name: Create badge json file
+      run: |
+        value=$(grep -oP 'headerCovTableEntry(Hi|Med|Lo)">[0-9]+\.[0-9]+' /code/coverage/index.html | grep -oP '[0-9]+\.[0-9]+' | head -n 1)
+        if [ "$(echo "${value} < 50" | bc -l)" = "1" ]; then
+          color="red"
+        elif [ "$(echo "${value} < 80" | bc -l)" = "1" ]; then
+          color="orange"
+        else
+          color="brightgreen"
+        fi
+        echo '{"schemaVersion":1,"label":"coverage","message":"'${value}'%","color":"'${color}'"}' > /code/coverage/badge.json
+    -
+      name: Upload coverage html
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-html
+        path: /code/coverage
+
   build_and_push_docker_images_as_local:
     needs: format_style
     name: Build and push docker images as local
@@ -147,7 +223,7 @@ jobs:
   # Deploy the Pages site in a dedicated job on a clean runner: actions/deploy-pages@v4
   # requires the 'github-pages' environment to be declared on the job.
   deploy_pages:
-    needs: doxygen
+    needs: [doxygen, unit_tests_and_coverage]
     name: Deploy GitHub Pages
     runs-on: ubuntu-latest
     # Do not fail the whole pipeline if Pages hiccups:
@@ -172,6 +248,12 @@ jobs:
       with:
         name: ${{ needs.doxygen.outputs.artifact_name }}
         path: site/doxygen
+    -
+      name: Download coverage html
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage-html
+        path: site/coverage
     -
       name: Assemble GitHub Pages site
       run: |

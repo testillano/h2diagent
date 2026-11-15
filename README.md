@@ -5,6 +5,7 @@
 [![Pages](https://img.shields.io/github/deployments/testillano/h2diagent/github-pages?label=pages)](https://testillano.github.io/h2diagent/)
 [![Documentation](https://img.shields.io/badge/docs-doxygen-blue.svg)](https://testillano.github.io/h2diagent/doxygen/)
 [![API](https://img.shields.io/badge/API-OpenAPI%203.1-6ba539.svg)](https://testillano.github.io/h2diagent/api/)
+[![Coverage Status](https://img.shields.io/endpoint?url=https://testillano.github.io/h2diagent/coverage/badge.json)](https://testillano.github.io/h2diagent/coverage)
 
 `h2diagent` is a lightweight **Diameter <-> HTTP/2 translation gateway** that enables [h2agent](https://github.com/testillano/h2agent) to mock and generate Diameter traffic without native Diameter support.
 
@@ -596,6 +597,15 @@ Once your change is published, remove `deps-local/<lib>` and bump the version.
 
 ```bash
 $ ./ut.sh
+```
+
+The CI publishes the coverage of a Debug build (`--coverage`) on the GitHub
+Pages site: [testillano.github.io/h2diagent/coverage](https://testillano.github.io/h2diagent/coverage)
+(badge above). Locally, the same report:
+
+```bash
+$ docker build --target build --build-arg build_type=Debug -t h2diagent:cov .
+$ docker run --rm -it --entrypoint bash h2diagent:cov -c 'apt-get update -qq && apt-get install -y -qq lcov >/dev/null && cd /code && ./build/Debug/bin/unit-test && lcov -q --capture --directory ./src --directory ./ut -o c.info --ignore-errors mismatch,inconsistent && lcov -q --extract c.info "/code/src/*" "/code/include/*" -o e.info && lcov --summary e.info'
 ```
 
 ## Execution
