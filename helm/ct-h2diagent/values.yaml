@@ -73,7 +73,6 @@ client:
     serverPort: 0
     peerHost: server
     peerPort: 3868
-  http2ServerPort: 8081
   h2agent:
     enabled: true
     adminPort: 8074

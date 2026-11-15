@@ -48,8 +48,11 @@ server/PCRF mock-brain case turns the sidecar on.
 | `diameter.connections` | `1` | Outbound connections to the peer (`--diameter-connections`, client/both). `N>1` = round-robin pool, TCP only. |
 | `diameter.decodeAs` | `{}` | AVP name -> readable form of its inbound OctetString bytes (`--decode-as`, see the project README). Empty = hex. |
 | `diameter.timeoutMs` | `5000` | Transaction timeout (`--diameter-timeout-ms`); expired outbound requests get a 504. |
-| `http2ServerPort` | `8081` | HTTP/2 server where an (external) director posts outbound triggers. Exposed in the Service as `http2-trigger`. |
+| `http2ServerPort` | `8005` | HTTP/2 server where an (external) director posts outbound triggers. Exposed in the Service as `http2-trigger`. |
+| `adminPort` | `8079` | Admin interface `/admin/v1` (health, peers, configuration, logging), Service `gw-admin`; the probes call `GET /admin/v1/health`. `0` disables it (TCP probes on `http2ServerPort`). |
 | `prometheusPort` | `8085` | Gateway metrics port (Service `gw-metrics`). |
+
+The gateway ports are the h2agent ones plus 5 (h2agent `8000` / `8074` / `8080`), so the gateway and an h2agent sidecar never collide in a pod.
 
 The effective brain the gateway dials is:
 
@@ -59,8 +62,8 @@ The effective brain the gateway dials is:
 
 ## Service
 
-The Service always exposes the gateway's `http2-trigger` (and, for a server,
-`diameter`, plus `gw-metrics` when metrics are enabled). The h2agent ports
+The Service always exposes the gateway's `http2-trigger` and `gw-admin` (and,
+for a server, `diameter`, plus `gw-metrics` when metrics are enabled). The h2agent ports
 (`http2-admin`, `http2-traffic`, `http-metrics`) are exposed **only** when
 `h2agent.enabled=true`.
 

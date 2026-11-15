@@ -41,6 +41,10 @@ Copyright (c) 2024 Eduardo Ramos
 namespace ert {
 namespace h2diagent {
 
+namespace admin {
+struct ConnectionInfo;
+}
+
 /**
  * Configuration for the Gateway.
  */
@@ -99,11 +103,12 @@ struct GatewayConfig {
     std::string h2agentHost{"localhost"};
     uint16_t h2agentPort{8000};
 
-    // HTTP/2 server (for outbound triggers from h2agent)
-    uint16_t http2ServerPort{8080};
+    // HTTP/2 server (for outbound triggers from h2agent): h2agent ports + 5
+    // (h2agent 8000 / 8074 / 8080, h2diagent 8005 / 8079 / 8085) so both fit in a pod.
+    uint16_t http2ServerPort{8005};
 
     // General
-    uint16_t adminPort{8074};
+    uint16_t adminPort{8079};  // admin interface (/admin/v1); 0 disables it
     uint16_t prometheusPort{8085};
     bool metricsEnabled{true};
     // Optional: attach extra Prometheus label(s) to the Diameter CLIENT metrics,
@@ -189,6 +194,14 @@ class Gateway {
     // Must run on the h2clientIo_ thread.
     void scheduleH2ClientReconnect();
 
+    // Admin interface (/admin/v1, see Admin.hpp) on --admin-port.
+    void startAdminServer();
+    // Diameter connections snapshot (client pool, then server leg).
+    std::vector<admin::ConnectionInfo> connections() const;
+    // Refresh the client connection state gauges (every second, on io_).
+    void refreshConnectionGauges();
+    void scheduleConnectionGauges();
+
     // Helper: map application-id to interface name
     std::string getInterfaceName(uint32_t appId) const;  // Helper: map command-code to command abbreviation
     std::string getCommandName(uint32_t commandCode, bool isRequest) const;
@@ -216,6 +229,7 @@ class Gateway {
 
     // Multi-stack dictionaries indexed by Application-Id
     std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;
+    std::vector<std::pair<std::string, uint32_t>> loadedDictionaries_;  // file and application id (admin)
     // --decode-as resolved against the dictionaries at start (empty: plain hex)
     diametercodec::codec::DecodeOptions decodeOptions_;
     diametercodec::stack::Dictionary defaultDictionary_;  // fallback for unknown appId
@@ -241,6 +255,14 @@ class Gateway {
 
     // HTTP/2 server (for outbound triggers)
     std::unique_ptr<nghttp2::asio_http2::server::http2> h2server_;
+
+    // Admin HTTP/2 server (/admin/v1)
+    std::unique_ptr<nghttp2::asio_http2::server::http2> adminServer_;
+
+    // Client connection state gauge (one series per pooled connection) and its refresh timer
+    ert::metrics::gauge_family_t* client_connection_state_gauge_family_ptr_{};
+    std::unique_ptr<boost::asio::steady_timer> gaugesTimer_;
+    std::atomic<bool> gaugesStopping_{false};
 };
 
 }  // namespace h2diagent

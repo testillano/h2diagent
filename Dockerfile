@@ -44,7 +44,7 @@ ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.4.0
-ARG ert_diametercomm_ver=v1.3.1
+ARG ert_diametercomm_ver=v1.4.0
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
@@ -295,7 +295,7 @@ COPY --from=build /code/build/${build_type}/bin/h2diagent /bin/h2diagent
 # Compatibility: the binary was under /opt up to 2.0.x
 RUN ln -s /bin/h2diagent /opt/h2diagent
 
-EXPOSE 3868 8080 8085
+EXPOSE 3868 8005 8079 8085
 # EXPOSE 8074  # admin port (future)
 
 ENTRYPOINT ["/bin/h2diagent"]

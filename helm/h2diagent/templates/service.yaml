@@ -32,6 +32,13 @@ spec:
       targetPort: {{ .Values.http2ServerPort }}
       protocol: TCP
       name: http2-trigger
+    {{- if gt (int .Values.adminPort) 0 }}
+    # Admin interface (/admin/v1).
+    - port: {{ .Values.adminPort }}
+      targetPort: {{ .Values.adminPort }}
+      protocol: TCP
+      name: gw-admin
+    {{- end }}
     {{- if include "h2diagent.hasServer" . }}
     - port: {{ .Values.diameter.serverPort }}
       targetPort: {{ .Values.diameter.serverPort }}

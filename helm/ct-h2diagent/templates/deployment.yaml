@@ -50,3 +50,8 @@ spec:
               value: {{ .Values.client.h2agent.adminPort | quote }}
             - name: CLIENT_TRAFFIC_PORT
               value: {{ .Values.client.h2agent.trafficPort | quote }}
+            # Gateway (h2diagent) admin and metrics ports (chart defaults)
+            - name: GATEWAY_ADMIN_PORT
+              value: {{ .Values.server.adminPort | default 8079 | quote }}
+            - name: GATEWAY_METRICS_PORT
+              value: {{ .Values.server.prometheusPort | default 8085 | quote }}

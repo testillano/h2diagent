@@ -8,12 +8,14 @@
 #
 # Assertions:
 #   - server peer recorded the inbound CCR on /diameter/gx/CCR/<Session-Id>
-#     (h2diagent appends the percent-encoded Session-Id; h2agent decodes it),
-#     matched by a literal FullMatching provision for that session
+#     (h2diagent appends the percent-encoded Session-Id; h2agent >= 5.4.0
+#     matches and stores the uri as received, so encoded), matched by a
+#     literal FullMatching provision for that session
 #   - client peer recorded a 200 response carrying the mocked CCA
 #     (Result-Code 2001) with the Session-Id echoed back.
 
 import time
+from urllib.parse import quote
 
 import pytest
 
@@ -29,12 +31,14 @@ from conftest import (
 GX_APP_ID = 16777238
 GX_CCR_URI = "/diameter/gx/CCR"
 SESSION_ID = "client.example.com;gxf-ccri;1"
-# Inbound URI as seen by the server h2agent (path percent-decoded).
-GX_CCR_SESSION_URI = GX_CCR_URI + "/" + SESSION_ID
+# Inbound URI as seen by the server h2agent: as received (h2agent >= 5.4.0 does
+# not decode the path), i.e. with the Session-Id percent-encoded by h2diagent
+# (RFC 3986 unreserved kept: ';' -> '%3B').
+GX_CCR_SESSION_URI = GX_CCR_URI + "/" + quote(SESSION_ID, safe="-_.~")
 
 # The client's h2agent posts outbound triggers to the client's own h2diagent
-# HTTP/2 server, which lives in the same pod (localhost:8081).
-CLIENT_HTTP2_SERVER_PORT = 8081
+# HTTP/2 server, which lives in the same pod (localhost:8005).
+CLIENT_HTTP2_SERVER_PORT = 8005
 
 CLIENT_ENDPOINT = {
     "id": "diameter-gw",

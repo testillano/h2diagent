@@ -160,6 +160,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
     -
+      # First: checkout cleans the workspace, so it must precede the downloads
+      name: Check out the repo
+      uses: actions/checkout@v4
+    -
       name: Setup Pages
       uses: actions/configure-pages@v3
     -
@@ -168,6 +172,11 @@ jobs:
       with:
         name: ${{ needs.doxygen.outputs.artifact_name }}
         path: site/doxygen
+    -
+      name: Assemble GitHub Pages site
+      run: |
+        cp docs/site/index.html site/index.html
+        cp -r docs/api site/api
     -
       name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3

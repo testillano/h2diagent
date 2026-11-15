@@ -74,9 +74,13 @@ diameter:
   serverTransport: tcp
   clientTransport: tcp
 
-# HTTP/2 server where the h2agent sidecar posts outbound triggers.
-# Kept away from h2agent.prometheusPort (8080) to avoid in-pod collision.
-http2ServerPort: 8081
+# Gateway ports: the h2agent ones + 5 (h2agent 8000 / 8074 / 8080), so the
+# gateway and an h2agent sidecar never collide in a pod.
+# HTTP/2 server where a director (or the h2agent sidecar) posts outbound triggers.
+http2ServerPort: 8005
+# Admin interface (/admin/v1: health, peers, configuration, logging). Also the
+# probes target (GET /admin/v1/health). 0 disables it (probes: TCP on http2ServerPort).
+adminPort: 8079
 
 logLevel: Warning
 verbose: true
@@ -91,9 +95,8 @@ metrics:
   enabled: true
 
 # Mount h2diagent's own helpers (tools/helpers.bash) into the h2diagent
-# container and source them on start (into ~/.bashrc). h2diagent has no admin
-# REST API, so these are metric shortcuts (metrics, metrics_summary) over the
-# Prometheus endpoint. Set to "" to disable.
+# container and source them on start (into ~/.bashrc): the admin operations
+# (peers, configuration, logging) and metric shortcuts. Set to "" to disable.
 utilsMountPath: /opt/utils
 
 # Companion h2agent "brain".

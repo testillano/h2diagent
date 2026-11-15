@@ -6,3 +6,4 @@ cmake-build-*/
 peers
 deps-local/*
 !deps-local/.gitkeep
+__pycache__/

@@ -92,12 +92,12 @@ void usage(const char* name) {
         << "  --h2agent-host <host>           h2agent traffic server host (default: localhost)\n"
         << "  --h2agent-port <port>           h2agent traffic server port (default: 8000)\n\n"
         << "HTTP/2 (for outbound from h2agent):\n"
-        << "  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8080)\n\n"
+        << "  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005)\n\n"
         << "General:\n"
         << "  --workers <n>                   Worker threads (default: nproc)\n"
         << "  [-l|--log-level <level>]        Log level: Debug|Informational|Notice|Warning|Error (default: Warning)\n"
         << "  [-v|--verbose]                  Output log traces on console\n"
-        //<< "  --admin-port <port>             Admin API port (default: 8074) [NOT YET IMPLEMENTED]\n"
+        << "  --admin-port <port>             Admin interface (/admin/v1) port (default: 8079); 0 disables it\n"
         << "  --prometheus-port <port>        Prometheus scrape port (default: 8085)\n"
         << "  --disable-metrics               Disable prometheus metrics\n\n"
         << "  --metrics-additional-label <AVP>  Add an extra label to the Diameter CLIENT metrics,\n"
@@ -166,14 +166,15 @@ int main(int argc, char* argv[]) {
         {"workers", required_argument, nullptr, 0},
         {"log-level", required_argument, nullptr, 'l'},
         {"verbose", no_argument, nullptr, 'v'},
-        //{"admin-port",          required_argument, nullptr, 0}, // NOT YET IMPLEMENTED
+        {"admin-port", required_argument, nullptr, 0},
         {"prometheus-port", required_argument, nullptr, 0},
         {"disable-metrics", no_argument, nullptr, 0},
         {"metrics-additional-label", required_argument, nullptr, 0},
         {"decode-as", required_argument, nullptr, 0},
         {"version", no_argument, nullptr, 'V'},
         {"help", no_argument, nullptr, 'h'},
-        {nullptr, 0, nullptr, 0}};
+        {nullptr, 0, nullptr, 0},
+    };
 
     int opt;
     int option_index = 0;
@@ -243,7 +244,8 @@ int main(int argc, char* argv[]) {
                     config.http2ServerPort = std::stoi(optarg);
                 else if (name == "workers")
                     config.workers = std::stoi(optarg);
-                // else if (name == "admin-port") config.adminPort = std::stoi(optarg); // NOT YET IMPLEMENTED
+                else if (name == "admin-port")
+                    config.adminPort = std::stoi(optarg);
                 else if (name == "prometheus-port")
                     config.prometheusPort = std::stoi(optarg);
                 else if (name == "disable-metrics")
@@ -332,7 +334,7 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << std::endl;
     std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << std::endl;
-    // std::cout << "Admin port: " << config.adminPort << std::endl; // NOT YET IMPLEMENTED
+    std::cout << "Admin port: " << (config.adminPort > 0 ? std::to_string(config.adminPort) : "disabled") << std::endl;
     std::cout << "Prometheus port: " << (config.metricsEnabled ? std::to_string(config.prometheusPort) : "disabled")
               << std::endl;
     std::cout << std::endl;

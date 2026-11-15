@@ -122,6 +122,8 @@ spec:
             {{- end }}
             - "--http2-server-port"
             - {{ .Values.http2ServerPort | quote }}
+            - "--admin-port"
+            - {{ .Values.adminPort | quote }}
             {{- if .Values.metrics.enabled }}
             - "--prometheus-port"
             - {{ .Values.prometheusPort | quote }}
@@ -133,20 +135,30 @@ spec:
             {{- if .Values.verbose }}
             - "--verbose"
             {{- end }}
-          # h2diagent has no admin/health endpoint (admin-port is not implemented),
-          # so readiness is a TCP check on the always-on HTTP/2 server port.
+          # Probes: the admin health (HTTP/2 prior knowledge, so an exec curl), or a
+          # TCP check on the HTTP/2 server port when the admin interface is disabled.
           readinessProbe:
+            {{- if gt (int .Values.adminPort) 0 }}
+            exec:
+              command: ["curl", "-sf", "--http2-prior-knowledge", "http://localhost:{{ .Values.adminPort }}/admin/v1/health"]
+            {{- else }}
             tcpSocket:
               port: {{ .Values.http2ServerPort }}
+            {{- end }}
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
+            {{- if gt (int .Values.adminPort) 0 }}
+            exec:
+              command: ["curl", "-sf", "--http2-prior-knowledge", "http://localhost:{{ .Values.adminPort }}/admin/v1/health"]
+            {{- else }}
             tcpSocket:
               port: {{ .Values.http2ServerPort }}
+            {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 10
           {{- if .Values.utilsMountPath }}
-          # Source the h2diagent metric helpers into interactive shells (kubectl exec).
+          # Source the h2diagent helpers into interactive shells (kubectl exec).
           lifecycle:
             postStart:
               exec:

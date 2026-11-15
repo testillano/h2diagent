@@ -2,7 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/testillano/h2diagent/actions/workflows/ci.yml/badge.svg)](https://github.com/testillano/h2diagent/actions/workflows/ci.yml)
+[![Pages](https://img.shields.io/github/deployments/testillano/h2diagent/github-pages?label=pages)](https://testillano.github.io/h2diagent/)
 [![Documentation](https://img.shields.io/badge/docs-doxygen-blue.svg)](https://testillano.github.io/h2diagent/doxygen/)
+[![API](https://img.shields.io/badge/API-OpenAPI%203.1-6ba539.svg)](https://testillano.github.io/h2diagent/api/)
 
 `h2diagent` is a lightweight **Diameter <-> HTTP/2 translation gateway** that enables [h2agent](https://github.com/testillano/h2agent) to mock and generate Diameter traffic without native Diameter support.
 
@@ -18,7 +20,9 @@ It translates Diameter messages to/from JSON over HTTP/2, allowing h2agent's ful
                     |  Diameter client (-> SUT)        |
                     |                                  |
                     |  HTTP/2 client  (-> h2agent)     |<-- inbound Diameter
-                    |  HTTP/2 server  (:8080)          |<-- outbound Diameter
+                    |  HTTP/2 server  (:8005)          |<-- outbound Diameter
+                    |  Admin API      (:8079)          |
+                    |  Prometheus     (:8085)          |
                     +----------------------------------+
                                     | HTTP/2
                     +----------------------------------+
@@ -53,8 +57,10 @@ POST /diameter/<interface>/<command>/<percent-encoded Session-Id>
 ```
 
 e.g. `POST /diameter/rx/RAR/af.realm.com%3B004001010020000%3B1630322271`.
-h2agent decodes the path, so its matching key and server data URI hold the
-Session-Id verbatim (`/diameter/rx/RAR/af.realm.com;004001010020000;1630322271`).
+h2agent (5.4.0 and later) matches and stores the uri as received, so its
+matching key and server data URI hold the Session-Id encoded, as sent
+(`/diameter/rx/RAR/af.realm.com%3B004001010020000%3B1630322271`; older h2agent
+versions decoded the path and held it verbatim).
 
 Why: h2agent keys the provision state machine (`inState`/`outState`) and the
 event history by method + **received** URI. With a fixed URI per command all
@@ -68,10 +74,11 @@ session evolves its own (e.g. a RAR chain per session).
 > | Goal | server-matching | Provisions |
 > |------|-----------------|------------|
 > | One generic provision chain per command, state per session | `{"algorithm": "FullMatchingRegexReplace", "rgx": "(/diameter/[^/]+/[^/]+)/.*", "fmt": "$1"}` | `requestUri: "/diameter/rx/RAR"` |
-> | One literal provision per session (Session-Ids known in advance) | `{"algorithm": "FullMatching"}` | `requestUri: "/diameter/rx/RAR/<Session-Id>"` (decoded) |
+> | One literal provision per session (Session-Ids known in advance) | `{"algorithm": "FullMatching"}` | `requestUri: "/diameter/rx/RAR/<encoded Session-Id>"` (as h2diagent sends it, `;` as `%3B`) |
 >
-> The regex takes everything after the command, not just the next segment: a
-> Session-Id containing `/` yields extra path segments once decoded. When the
+> The regex takes everything after the command, not just the next segment (with
+> h2agent versions that decode the path, a Session-Id containing `/` yields
+> extra path segments). When the
 > regex does not match (no Session-Id), the URI is kept as is, so the same
 > recipe also covers bare URIs. The state machine is per received URI in both
 > cases (see h2agent [classification pipeline](https://github.com/testillano/h2agent/blob/master/docs/api/README.md#classification-pipeline)).
@@ -594,7 +601,7 @@ $ ./ut.sh
 ## Execution
 
 ```bash
-$ docker run --rm -it -p 3868:3868 -p 8074:8074 -p 8080:8080 ghcr.io/testillano/h2diagent:latest \
+$ docker run --rm -it -p 3868:3868 -p 8005:8005 -p 8079:8079 -p 8085:8085 ghcr.io/testillano/h2diagent:latest \
     --origin-host "mock-pcrf.example.com" \
     --origin-realm "example.com" \
     --dictionary /config/dictionary.json \
@@ -605,7 +612,12 @@ $ docker run --rm -it -p 3868:3868 -p 8074:8074 -p 8080:8080 ghcr.io/testillano/
 
 ## Command-line options
 
-As given by `h2diagent --help` (there is no admin interface yet: its port is not an option):
+As given by `h2diagent --help`. The default ports are the h2agent ones plus 5
+(h2agent `8000` / `8074` / `8080`, h2diagent `8005` / `8079` / `8085`), so the
+gateway and an h2agent sidecar never collide in a pod. **Changed**: the HTTP/2
+server port was `8080` (`8081` in the chart) and there was no admin port: a
+director's `client-endpoint` towards the gateway must use `8005` (or pass
+`--http2-server-port` explicitly).
 
 ```
 $ h2diagent --help
@@ -659,12 +671,13 @@ HTTP/2 (towards h2agent):
   --h2agent-port <port>           h2agent traffic server port (default: 8000)
 
 HTTP/2 (for outbound from h2agent):
-  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8080)
+  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005)
 
 General:
   --workers <n>                   Worker threads (default: nproc)
   [-l|--log-level <level>]        Log level: Debug|Informational|Notice|Warning|Error (default: Warning)
   [-v|--verbose]                  Output log traces on console
+  --admin-port <port>             Admin interface (/admin/v1) port (default: 8079); 0 disables it
   --prometheus-port <port>        Prometheus scrape port (default: 8085)
   --disable-metrics               Disable prometheus metrics
 
@@ -683,6 +696,48 @@ General:
   [-V|--version]                  Program version
   [-h|--help]                     This help
 ```
+
+## Admin interface
+
+An HTTP/2 server on `--admin-port` (`8079` by default; `0` disables it) serves
+the gateway state under `/admin/v1`. It is **not authenticated**: keep it inside
+the test namespace (no `NodePort` / ingress). The full reference is the
+[OpenAPI 3.1 specification](./docs/api/openapi.yaml), rendered at
+[testillano.github.io/h2diagent/api](https://testillano.github.io/h2diagent/api/).
+
+| Operation | Answer |
+|---|---|
+| `GET /admin/v1/health` | `200 {"status":"healthy"}` while the process serves (the chart probes) |
+| `GET /admin/v1/peers` | the Diameter connections (below) |
+| `GET /admin/v1/configuration` | running options: ports, identity, dictionaries (file and application id), timeouts, transports, TLS on/off (never passwords), `--decode-as`, metrics |
+| `GET /admin/v1/logging` | current log level (text) |
+| `PUT /admin/v1/logging?level=<level>` | sets it (`200`; `400` for an unknown level) |
+
+Another method on those resources is `405`; any other path is `404`.
+
+`GET /admin/v1/peers` lists every connection: the client pool (`--diameter-connections`,
+`leg: client`, with its pool `index`) and the peers connected to the listener
+(`leg: server`):
+
+```json
+{"connections": [
+  {"leg": "client", "index": 0, "transport": "tcp", "state": "open",
+   "localAddress": "10.0.0.5:41022", "peerAddress": "10.0.0.7:3868",
+   "peerOriginHost": "server.example.com", "peerOriginRealm": "example.com"},
+  {"leg": "server", "index": 0, "transport": "tcp", "state": "open",
+   "localAddress": "10.0.0.5:3868", "peerAddress": "10.0.0.9:50114",
+   "peerOriginHost": "client.example.com", "peerOriginRealm": "example.com"}
+]}
+```
+
+`state` is `closed`, `reconnecting` (a client connection lost, with its
+reconnection armed), `waitCEA` / `waitCER` (capabilities exchange), `open` or
+`closing` (DPR sent). A client connection which is not connected shows the
+configured peer address and no peer identity. A server peer which closes leaves
+the list.
+
+The helpers (`tools/helpers.bash`) wrap them: `health`, `peers`,
+`configuration`, `logging [level]`.
 
 ## Diameter client connection pool (`--diameter-connections`)
 
@@ -884,6 +939,19 @@ h2diagent exposes Prometheus metrics on port `8085` (configurable via `--prometh
 
 Combined with h2agent's metrics (port `8080`), you get full visibility of both the Diameter and HTTP/2 sides.
 
+The gateway itself adds a state gauge per client connection, refreshed every
+second (the metric form of `GET /admin/v1/peers` for the client pool):
+
+```
+h2diagent_diameter_client_connection_state [source] [connection] [peer]
+   0 closed, 1 open, 2 reconnecting, 3 capabilities exchange (CER/CEA), 4 closing (DPR)
+```
+
+`connection` is the pool position (`0..N-1`) and `peer` the configured
+`<host>:<port>`, so the series are bounded (unlike the diametercomm
+`diameter_client_peer_state_gauge`, one series shared by all the pooled
+connections). The server leg count is `diameter_server_active_peers_gauge`.
+
 ### Quick Prometheus setup
 
 Use h2agent's [`prometheus-only.sh`](https://github.com/testillano/h2agent/blob/master/tools/grafana/prometheus-only.sh) script to quickly spin up a Prometheus instance that scrapes both:
@@ -1037,18 +1105,24 @@ h2diagent_http2_server_requests_received_counter{source="h2diagent",method="POST
 h2diagent_http2_client_responses_received_counter{source="h2diagent",method="POST",status_code="200"} 15
 diameter_server_active_peers_gauge{source="h2diagent"} 1
 diameter_client_peer_state_gauge{source="h2diagent"} 1
+h2diagent_diameter_client_connection_state{source="h2diagent",connection="0",peer="server:3868"} 1
 ```
 
 ### Helper functions (`tools/helpers.bash`)
 
-Since h2diagent has no administrative REST interface, `tools/helpers.bash`
-provides shortcut functions over the Prometheus metrics endpoint (h2diagent
-only; the h2agent sidecar has its own helpers). Source it natively, or use it
-inside the container (the helm chart mounts it and sources it into `~/.bashrc`
-for `kubectl exec`):
+`tools/helpers.bash` provides the [admin](#admin-interface) operations and
+shortcut functions over the Prometheus metrics endpoint (h2diagent only; the
+h2agent sidecar has its own helpers). Source it natively, or use it inside the
+container (the helm chart mounts it and sources it into `~/.bashrc` for
+`kubectl exec`):
 
 ```bash
-source tools/helpers.bash   # native (targets localhost:8085 by default)
+source tools/helpers.bash   # native (admin localhost:8079, metrics localhost:8085 by default)
+
+health                   # admin health
+peers                    # Diameter connections (leg, state, addresses, peer identity)
+configuration            # running configuration
+logging [level]          # gets / sets the log level
 
 metrics [port]           # raw Prometheus metrics scraped from h2diagent
 metrics_summary          # Diameter client summary (result-codes, PASS(2001),
@@ -1071,7 +1145,7 @@ metrics_summary before after --json # machine-readable delta
 
 `metrics` takes an optional `[port]`; `metrics_summary` takes `--port <p>`
 (both default to `H2DIAHLP_METRICS_PORT`). Use `-h` for full usage. Override
-targets via `H2DIAHLP_METRICS_PORT`, `H2DIAHLP_SERVER_ADDR`, `H2DIAHLP_SCHEME`
+targets via `H2DIAHLP_ADMIN_PORT`, `H2DIAHLP_METRICS_PORT`, `H2DIAHLP_SERVER_ADDR`, `H2DIAHLP_SCHEME`
 (h2diagent scrapes with an inline `curl -s`, so there is no CURL override).
 
 ### Grafana dashboard

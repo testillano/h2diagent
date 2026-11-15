@@ -1,6 +1,6 @@
 #!/bin/echo "source me!"
 #
-# h2diagent helper functions (metrics shortcuts).
+# h2diagent helper functions (admin operations and metrics shortcuts).
 #
 # This is the h2diagent project, so these helpers cover h2diagent only. The
 # h2agent sidecar belongs to another project and ships its own helpers in its
@@ -9,17 +9,18 @@
 # collisions there.
 #
 # Usage:
-#   - Native:     source tools/helpers.bash   (localhost:8085 by default)
+#   - Native:     source tools/helpers.bash   (admin localhost:8079, metrics localhost:8085 by default)
 #   - Container:  mounted by the helm chart and sourced into ~/.bashrc for the
 #                 h2diagent container (variables below are set from helm values).
 #
-# h2diagent has no administrative REST interface, so these are shortcuts over
-# the Prometheus metrics endpoint (the real Diameter result codes live here:
-# h2agent metrics only reflect HTTP/2 relay, where a Diameter error answer is
-# still carried as HTTP/2 200).
+# The admin functions (health, peers, configuration, logging) call the admin
+# interface (/admin/v1, HTTP/2). The metric ones are shortcuts over the Prometheus
+# endpoint (the real Diameter result codes live there: h2agent metrics only
+# reflect the HTTP/2 relay, where a Diameter error answer is still carried as
+# HTTP/2 200).
 #
-# Every function accepts an optional [port] argument (overriding H2DIAHLP_METRICS_PORT)
-# and prints a one-line description with -h.
+# The metric functions accept an optional [port] argument (overriding
+# H2DIAHLP_METRICS_PORT); every function prints a one-line description with -h.
 
 #############
 # VARIABLES #
@@ -31,14 +32,14 @@
 # H2DIAHLP_METRICS_PORT=9090 source helpers.bash
 PNAME=${PNAME:-h2diagent}
 H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT:-8085}
+H2DIAHLP_ADMIN_PORT=${H2DIAHLP_ADMIN_PORT:-8079}
 H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME:-http}
 H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR:-localhost}
-export PNAME H2DIAHLP_METRICS_PORT H2DIAHLP_SCHEME H2DIAHLP_SERVER_ADDR
-# NOTE: h2diagent exposes only a plain HTTP/1 Prometheus endpoint (no HTTP/2
-# admin API), so its scrapes use `curl -s` inline. We deliberately do NOT define
-# a global CURL variable here: exporting one would leak into a shell that also
-# sources the h2agent helpers (which need `curl --http2-prior-knowledge` for the
-# admin API), silently breaking their admin calls. Keep the curl inline.
+export PNAME H2DIAHLP_METRICS_PORT H2DIAHLP_ADMIN_PORT H2DIAHLP_SCHEME H2DIAHLP_SERVER_ADDR
+# NOTE: the Prometheus endpoint is plain HTTP/1 (`curl -s`) and the admin one is
+# HTTP/2 prior knowledge (`curl -s --http2-prior-knowledge`), both inline. We
+# deliberately do NOT define a global CURL variable here: exporting one would leak
+# into a shell that also sources the h2agent helpers, silently changing their calls.
 
 #############
 # FUNCTIONS #
@@ -46,6 +47,11 @@ export PNAME H2DIAHLP_METRICS_PORT H2DIAHLP_SCHEME H2DIAHLP_SERVER_ADDR
 
 # -----------------------------------------------------------------------------
 # INTERNAL
+
+# admin_url: base URL of the admin interface.
+admin_url() {
+  echo "${H2DIAHLP_SCHEME}://${H2DIAHLP_SERVER_ADDR}:${H2DIAHLP_ADMIN_PORT}/admin/v1"
+}
 
 # metrics_url [port]: build the Prometheus scrape URL.
 metrics_url() {
@@ -55,6 +61,34 @@ metrics_url() {
 
 # -----------------------------------------------------------------------------
 # PUBLIC
+
+# health: admin health (200 while the process serves).
+health() {
+  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: health [-h|--help]; Gateway health ($(admin_url)/health)." && return 0
+  curl -s --http2-prior-knowledge "$(admin_url)/health"; echo
+}
+
+# peers: the Diameter connections (client pool and server leg) with their state.
+peers() {
+  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: peers [-h|--help]; Diameter connections: leg, state, addresses, peer identity ($(admin_url)/peers)." && return 0
+  curl -s --http2-prior-knowledge "$(admin_url)/peers"; echo
+}
+
+# configuration: running options of the gateway.
+configuration() {
+  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: configuration [-h|--help]; Gateway running configuration ($(admin_url)/configuration)." && return 0
+  curl -s --http2-prior-knowledge "$(admin_url)/configuration"; echo
+}
+
+# logging [level]: gets the log level, or sets it.
+logging() {
+  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: logging [-h|--help] [Debug|Informational|Notice|Warning|Error|Critical|Alert|Emergency]; Gets/sets the gateway log level ($(admin_url)/logging)." && return 0
+  if [ -n "$1" ]; then
+    curl -s --http2-prior-knowledge -XPUT "$(admin_url)/logging?level=$1"; echo
+  else
+    curl -s --http2-prior-knowledge "$(admin_url)/logging"; echo
+  fi
+}
 
 # metrics [port]: raw Prometheus metrics scraped from h2diagent.
 metrics() {
@@ -480,14 +514,16 @@ help() {
   echo "Usage: help; This help summary."
   echo
   echo "=== Documentation resources ==="
+  echo "Admin interface: https://github.com/testillano/h2diagent#admin-interface"
   echo "Metrics & monitoring: https://github.com/testillano/h2diagent#metrics-and-monitoring"
   echo
   echo "=== Internal Functions And Variables ==="
+  echo "admin_url: $(admin_url) (H2DIAHLP_ADMIN_PORT=${H2DIAHLP_ADMIN_PORT})"
   echo "metrics_url: $(metrics_url) (H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT}; H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME}; H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR})"
-  export -f metrics_url
+  export -f admin_url metrics_url
   echo
   echo "=== Functions ==="
-  for f in metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
+  for f in health peers configuration logging metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
   echo
 }
 

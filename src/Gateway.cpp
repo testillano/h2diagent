@@ -14,6 +14,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <chrono>
 #include <ert/diametercodec/codec/Avp.hpp>
 #include <ert/diametercodec/codec/Message.hpp>
+#include <ert/h2diagent/Admin.hpp>
 #include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/tracing/Logger.hpp>
@@ -173,6 +174,7 @@ void Gateway::start() {
             // Load directly into map (Dictionary has internal Avp pointers
             // to itself, so it cannot be moved after load)
             dictionaries_[appId].load(dictJson);
+            loadedDictionaries_.emplace_back(dictPath, appId);
 
             LOGWARNING(ert::tracing::Logger::warning(
                 ert::tracing::Logger::asString("Dictionary loaded: %s (application-id: %u)", dictPath.c_str(), appId),
@@ -229,6 +231,11 @@ void Gateway::start() {
             h2_client_responses_received_counter_family_ptr_ =
                 &(metrics_->addCounterFamily("h2diagent_http2_client_responses_received_counter",
                                              "HTTP/2 client responses received from h2agent", familyLabels));
+            client_connection_state_gauge_family_ptr_ = &(metrics_->addGaugeFamily(
+                "h2diagent_diameter_client_connection_state",
+                "Diameter client connection state per pooled connection (0 closed, 1 open, 2 reconnecting, "
+                "3 capabilities exchange, 4 closing)",
+                familyLabels));
         }
     }
 
@@ -445,7 +452,95 @@ void Gateway::start() {
         LOGWARNING(ert::tracing::Logger::warning("HTTP/2 server disabled (port 0)", ERT_FILE_LOCATION));
     }
 
+    // --- Admin interface (/admin/v1) ---
+    if (config_.adminPort > 0) {
+        startAdminServer();
+    } else {
+        LOGWARNING(ert::tracing::Logger::warning("Admin server disabled (port 0)", ERT_FILE_LOCATION));
+    }
+
+    // --- Client connection state gauges (refreshed every second) ---
+    if (metrics_ && client_connection_state_gauge_family_ptr_ && diameterClientPool_) {
+        gaugesTimer_ = std::make_unique<boost::asio::steady_timer>(io_);
+        refreshConnectionGauges();
+        scheduleConnectionGauges();
+    }
+
     LOGWARNING(ert::tracing::Logger::warning("h2diagent gateway started", ERT_FILE_LOCATION));
+}
+
+// ============================================================================
+// Admin interface and connection gauges
+// ============================================================================
+std::vector<admin::ConnectionInfo> Gateway::connections() const {
+    std::vector<admin::ConnectionInfo> result;
+    if (diameterClientPool_) {
+        for (std::size_t i = 0; i < diameterClientPool_->size(); ++i)
+            result.push_back(admin::clientInfo(diameterClientPool_->client(i), static_cast<int>(i)));
+    }
+    if (diameterServer_) {
+        int index = 0;
+        for (const auto& peer : diameterServer_->peers())
+            if (peer) result.push_back(admin::serverInfo(*peer, index++));
+    }
+    return result;
+}
+
+void Gateway::refreshConnectionGauges() {
+    if (!diameterClientPool_ || !client_connection_state_gauge_family_ptr_) return;
+    const std::string peer = config_.diameterPeerHost + ":" + std::to_string(config_.diameterPeerPort);
+    for (std::size_t i = 0; i < diameterClientPool_->size(); ++i) {
+        const auto info = admin::clientInfo(diameterClientPool_->client(i), static_cast<int>(i));
+        client_connection_state_gauge_family_ptr_
+            ->Add({{"source", config_.productName}, {"connection", std::to_string(i)}, {"peer", peer}})
+            .Set(admin::stateValue(info.state));
+    }
+}
+
+void Gateway::scheduleConnectionGauges() {
+    if (gaugesStopping_ || !gaugesTimer_) return;
+    gaugesTimer_->expires_after(std::chrono::seconds(1));
+    gaugesTimer_->async_wait([this](const boost::system::error_code& ec) {
+        if (ec || gaugesStopping_) return;  // cancelled (shutdown)
+        refreshConnectionGauges();
+        scheduleConnectionGauges();
+    });
+}
+
+void Gateway::startAdminServer() {
+    adminServer_ = std::make_unique<nghttp2::asio_http2::server::http2>();
+    adminServer_->handle(
+        "/", [this](const nghttp2::asio_http2::server::request& req, const nghttp2::asio_http2::server::response& res) {
+            // Answer once the request is complete (a PUT may carry a body, ignored).
+            // Everything runs on this stream's thread: no foreign thread touches res.
+            auto method = std::make_shared<std::string>(req.method());
+            auto path = std::make_shared<std::string>(req.uri().path);
+            auto query = std::make_shared<std::string>(req.uri().raw_query);
+            req.on_data([this, &res, method, path, query](const uint8_t*, std::size_t len) {
+                if (len > 0) return;
+                const admin::Response answer = admin::handle(
+                    *method, *path, *query, [this]() { return connections(); },
+                    [this]() { return admin::configurationJson(config_, loadedDictionaries_); });
+                nghttp2::asio_http2::header_map h;
+                h.emplace("content-type", nghttp2::asio_http2::header_value{answer.contentType, false});
+                res.write_head(answer.status, h);
+                res.end(answer.body);
+            });
+        });
+
+    boost::system::error_code ec;
+    adminServer_->listen_and_serve(ec, "0.0.0.0", std::to_string(config_.adminPort), true);
+    if (ec) {
+        LOGWARNING(
+            ert::tracing::Logger::warning(ert::tracing::Logger::asString("Admin server failed to start on port %d: %s",
+                                                                         config_.adminPort, ec.message().c_str()),
+                                          ERT_FILE_LOCATION));
+        adminServer_.reset();
+    } else {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Admin server listening on port %d (/admin/v1)", config_.adminPort),
+            ERT_FILE_LOCATION));
+    }
 }
 
 // ============================================================================
@@ -525,6 +620,15 @@ void Gateway::stop() {
     // the session while we tear it down.
     h2clientStopping_ = true;
 
+    gaugesStopping_ = true;
+    if (gaugesTimer_) gaugesTimer_->cancel();
+
+    if (adminServer_) {
+        adminServer_->stop();
+        adminServer_->join();
+        adminServer_.reset();
+    }
+
     if (diameterServer_) {
         diameterServer_->shutdown(0);
         diameterServer_.reset();
@@ -554,6 +658,7 @@ void Gateway::stop() {
     }
     // The io thread is stopped and joined: safe to destroy the reconnect timer.
     h2clientReconnectTimer_.reset();
+    gaugesTimer_.reset();
 
     if (metrics_) {
         delete metrics_;

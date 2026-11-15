@@ -72,6 +72,9 @@ class DiameterClientPool {
     /** Number of connections in the pool. */
     std::size_t size() const { return clients_.size(); }
 
+    /** Connection at a pool position (0..size()-1), for diagnostics (admin, gauges). */
+    const diametercomm::DiameterClient& client(std::size_t index) const { return *clients_.at(index); }
+
     /** Enable metrics on every pooled connection (same source label). */
     void enableMetrics(ert::metrics::Metrics* metrics, const std::string& source) {
         for (auto& c : clients_) c->enableMetrics(metrics, source);

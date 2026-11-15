@@ -2,6 +2,7 @@ add_executable(unit-test
     helpers_test.cpp
     diameterClientPool_test.cpp
     decodeAs_test.cpp
+    admin_test.cpp
 )
 
 target_include_directories(unit-test

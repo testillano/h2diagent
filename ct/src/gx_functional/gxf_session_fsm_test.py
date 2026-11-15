@@ -16,6 +16,7 @@
 # (/diameter/gx/CCR/<Session-Id>): the outbound parser ignores the suffix.
 
 import time
+from urllib.parse import quote
 
 import pytest
 
@@ -30,7 +31,7 @@ from conftest import (
 
 GX_APP_ID = 16777238
 GX_CCR_URI = "/diameter/gx/CCR"
-CLIENT_HTTP2_SERVER_PORT = 8081
+CLIENT_HTTP2_SERVER_PORT = 8005
 
 SESSIONS = {
     "warmup": "client.example.com;gxf-fsm;0",
@@ -172,6 +173,7 @@ def test_gx_inbound_state_machine_per_session(server_admin, client_admin):
     # Server data: both per-session keys reached the final 'purge' state, so
     # they were removed; nothing is left under the bare command URI either.
     server_uris = {item.get("uri") for item in server_admin.data_list(ADMIN_SERVER_DATA_URI)}
-    assert GX_CCR_URI + "/" + SESSIONS["A"] not in server_uris
-    assert GX_CCR_URI + "/" + SESSIONS["B"] not in server_uris
+    # (keys as received: the Session-Id percent-encoded, h2agent >= 5.4.0)
+    assert GX_CCR_URI + "/" + quote(SESSIONS["A"], safe="-_.~") not in server_uris
+    assert GX_CCR_URI + "/" + quote(SESSIONS["B"], safe="-_.~") not in server_uris
     assert GX_CCR_URI not in server_uris

@@ -13,6 +13,7 @@
 #     gateway, without --decode-as, decodes it as plain hex.
 
 import time
+from urllib.parse import quote
 
 import pytest
 
@@ -28,12 +29,14 @@ from conftest import (
 GX_APP_ID = 16777238
 GX_CCR_URI = "/diameter/gx/CCR"
 SESSION_ID = "client.example.com;gxf-decode-as;1"
-GX_CCR_SESSION_URI = GX_CCR_URI + "/" + SESSION_ID
+# As received by the server h2agent (>= 5.4.0 does not decode the path): the
+# Session-Id percent-encoded by h2diagent (RFC 3986 unreserved kept).
+GX_CCR_SESSION_URI = GX_CCR_URI + "/" + quote(SESSION_ID, safe="-_.~")
 
 ULI = {"type": "tai", "mcc": "460", "mnc": "00", "tac": 101}
 ULI_HEX = "8064f0000065"
 
-CLIENT_ENDPOINT = {"id": "diameter-gw", "host": "localhost", "port": 8081, "secure": False}
+CLIENT_ENDPOINT = {"id": "diameter-gw", "host": "localhost", "port": 8005, "secure": False}
 
 SERVER_PROVISION_CCA = {
     "requestMethod": "POST",

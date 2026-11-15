@@ -1,9 +1,9 @@
 {{/*
 h2diagent (gateway) troubleshooting helpers for the h2diagent container.
-h2diagent has no admin REST API, so these are metric shortcuts over the
-Prometheus endpoint. Provides:
+Admin operations (/admin/v1) and metric shortcuts over the Prometheus endpoint.
+Provides:
   - native-helpers.bash : this repo's tools/helpers.bash (symlinked)
-  - helpers.bash        : thin wrapper that sets this peer's metrics port and
+  - helpers.bash        : thin wrapper that sets this peer's admin/metrics ports and
                           sources native-helpers.bash.
 Mounted at .Values.utilsMountPath on the h2diagent container and sourced into
 ~/.bashrc via its postStart hook.
@@ -28,6 +28,7 @@ data:
     #######################
     PNAME="{{ .Values.nameOverride | default .Values.productName }}"
     H2DIAHLP_METRICS_PORT="{{ .Values.prometheusPort }}"
+    H2DIAHLP_ADMIN_PORT="{{ .Values.adminPort }}"
     H2DIAHLP_SERVER_ADDR="localhost"
 
     #############

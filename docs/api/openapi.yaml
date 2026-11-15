@@ -1,0 +1,289 @@
+openapi: 3.1.0
+info:
+  title: h2diagent Admin API
+  description: |
+    Admin interface of the h2diagent Diameter <-> HTTP/2 gateway: health, the
+    Diameter connections, the running configuration and the log level. All
+    operations are served under the `/admin/v1/` base path on the admin port
+    (`--admin-port`, default 8079; `0` disables it), over HTTP/2 (prior
+    knowledge: `curl --http2-prior-knowledge`).
+
+    The interface is **not authenticated**: keep it inside the test namespace.
+  version: "1.0"
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: h2diagent
+    url: https://github.com/testillano/h2diagent
+
+servers:
+  - url: http://localhost:8079
+    description: Default admin endpoint
+
+tags:
+  - name: health
+    description: Process health (the chart probes)
+  - name: peers
+    description: Diameter connections
+  - name: configuration
+    description: Running configuration
+  - name: logging
+    description: Log level
+
+paths:
+  /admin/v1/health:
+    get:
+      tags: [health]
+      summary: Health
+      description: Answers 200 while the process serves.
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy]
+                required: [status]
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /admin/v1/peers:
+    get:
+      tags: [peers]
+      summary: Diameter connections
+      description: >
+        Every Diameter connection: the client pool (`--diameter-connections`,
+        leg `client`, pool position as index) and the peers connected to the
+        listener (leg `server`). A client connection which is not connected
+        shows the configured peer address and no peer identity; a server peer
+        which closes leaves the list.
+      responses:
+        '200':
+          description: Connections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connections:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connection'
+                required: [connections]
+              example:
+                connections:
+                  - leg: client
+                    index: 0
+                    transport: tcp
+                    state: open
+                    localAddress: 10.0.0.5:41022
+                    peerAddress: 10.0.0.7:3868
+                    peerOriginHost: server.example.com
+                    peerOriginRealm: example.com
+                  - leg: server
+                    index: 0
+                    transport: tcp
+                    state: open
+                    localAddress: 10.0.0.5:3868
+                    peerAddress: 10.0.0.9:50114
+                    peerOriginHost: client.example.com
+                    peerOriginRealm: example.com
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /admin/v1/configuration:
+    get:
+      tags: [configuration]
+      summary: Running configuration
+      description: >
+        Ports, Diameter identity, dictionaries (file and application id),
+        timeouts, transports, TLS enabled or not (never keys nor passwords),
+        `--decode-as`, metrics.
+      responses:
+        '200':
+          description: Configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuration'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /admin/v1/logging:
+    get:
+      tags: [logging]
+      summary: Current log level
+      responses:
+        '200':
+          description: Log level
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Warning
+    put:
+      tags: [logging]
+      summary: Set the log level
+      parameters:
+        - name: level
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [Debug, Informational, Notice, Warning, Error, Critical, Alert, Emergency]
+      responses:
+        '200':
+          description: Level set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '400':
+          description: Missing or unknown level (the current one is kept)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+components:
+  responses:
+    MethodNotAllowed:
+      description: Method not allowed on the resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResultResponse'
+
+  schemas:
+    ResultResponse:
+      type: object
+      description: Any other path under the admin port answers 404 with this document.
+      properties:
+        result:
+          type: string
+          enum: ["true", "false"]
+        response:
+          type: string
+      required: [result, response]
+
+    Connection:
+      type: object
+      properties:
+        leg:
+          type: string
+          enum: [client, server]
+          description: client = opened by the gateway (pool); server = accepted by its listener
+        index:
+          type: integer
+          minimum: 0
+          description: Client pool position, or listing position on the server leg
+        transport:
+          type: string
+          enum: [tcp, sctp]
+        state:
+          type: string
+          enum: [closed, reconnecting, waitCEA, waitCER, open, closing]
+          description: >
+            reconnecting = a client connection lost with its reconnection armed;
+            waitCEA / waitCER = capabilities exchange; closing = DPR sent.
+        localAddress:
+          type: string
+          description: <address>:<port> (absent when not connected)
+        peerAddress:
+          type: string
+          description: <address>:<port> (a client connection not connected shows the configured peer)
+        peerOriginHost:
+          type: string
+          description: Origin-Host of the peer (absent until the capabilities exchange)
+        peerOriginRealm:
+          type: string
+      required: [leg, index, transport, state]
+
+    Configuration:
+      type: object
+      properties:
+        diameter:
+          type: object
+          properties:
+            serverPort:
+              type: integer
+              description: Listener port (0 = no listener)
+            serverTransport:
+              type: string
+              enum: [tcp, sctp]
+            serverTls:
+              type: boolean
+            originHost:
+              type: string
+            originRealm:
+              type: string
+            productName:
+              type: string
+            watchdogIntervalSec:
+              type: integer
+            timeoutMs:
+              type: integer
+            dictionaries:
+              type: array
+              items:
+                type: object
+                properties:
+                  file:
+                    type: string
+                  applicationId:
+                    type: integer
+            decodeAs:
+              type: object
+              additionalProperties:
+                type: string
+              description: AVP name -> readable form
+            peer:
+              type: object
+              description: Present when the gateway dials a peer (client leg)
+              properties:
+                host:
+                  type: string
+                port:
+                  type: integer
+                transport:
+                  type: string
+                  enum: [tcp, sctp]
+                connections:
+                  type: integer
+                localHost:
+                  type: string
+                  description: Local source address, or "auto"
+                tls:
+                  type: boolean
+        h2agent:
+          type: object
+          properties:
+            host:
+              type: string
+            port:
+              type: integer
+        http2ServerPort:
+          type: integer
+        adminPort:
+          type: integer
+        metrics:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            prometheusPort:
+              type: integer
+            additionalLabels:
+              type: array
+              items:
+                type: string
+        workers:
+          type: integer
+          description: Worker threads (0 = nproc)
