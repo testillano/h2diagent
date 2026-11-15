@@ -232,6 +232,11 @@ void Gateway::start() {
             h2_client_responses_received_counter_family_ptr_ =
                 &(metrics_->addCounterFamily("h2diagent_http2_client_responses_received_counter",
                                              "HTTP/2 client responses received from h2agent", familyLabels));
+            sctp_path_state_gauge_family_ptr_ = &(metrics_->addGaugeFamily(
+                "h2diagent_diameter_sctp_path_state",
+                "SCTP path state per connection and peer address (0 inactive, 1 active, 2 unconfirmed, "
+                "3 potentially failed)",
+                familyLabels));
             client_connection_state_gauge_family_ptr_ = &(metrics_->addGaugeFamily(
                 "h2diagent_diameter_client_connection_state",
                 "Diameter client connection state per pooled connection (0 closed, 1 open, 2 reconnecting, "
@@ -250,6 +255,9 @@ void Gateway::start() {
     for (const auto& [appId, dict] : dictionaries_) {
         if (appId != 0) peerConfig.applicationIds.push_back(appId);
     }
+
+    // SCTP association options (multihoming paths supervision)
+    peerConfig.sctp = config_.sctp;
 
     // --cea-result-code: the CEA outcome (server leg), also set by PUT configuration
     peerConfig.ceaResultCode = config_.ceaResultCode;
@@ -306,7 +314,7 @@ void Gateway::start() {
             [this](std::shared_ptr<diametercomm::Peer>, const diametercomm::Peer::Buffer& answer) {
                 return diameterClientPool_ && diameterClientPool_->tryResolve(answer);
             });
-        diameterServer_->listen("0.0.0.0", config_.diameterPort);
+        diameterServer_->listen(config_.diameterServerLocalHost, config_.diameterPort);
 
         LOGWARNING(ert::tracing::Logger::warning(
             ert::tracing::Logger::asString(
@@ -489,8 +497,10 @@ void Gateway::start() {
         LOGWARNING(ert::tracing::Logger::warning("Admin server disabled (port 0)", ERT_FILE_LOCATION));
     }
 
-    // --- Client connection state gauges (refreshed every second) ---
-    if (metrics_ && client_connection_state_gauge_family_ptr_ && diameterClientPool_) {
+    // --- Connection and SCTP path state gauges (refreshed every second) ---
+    if (metrics_ && client_connection_state_gauge_family_ptr_ &&
+        (diameterClientPool_ ||
+         (diameterServer_ && config_.diameterServerTransport == diametercomm::Transport::SCTP))) {
         gaugesTimer_ = std::make_unique<boost::asio::steady_timer>(io_);
         refreshConnectionGauges();
         scheduleConnectionGauges();
@@ -571,14 +581,42 @@ admin::Response Gateway::setCeaResultCode(int32_t code) {
 }
 
 void Gateway::refreshConnectionGauges() {
-    if (!diameterClientPool_ || !client_connection_state_gauge_family_ptr_) return;
     const std::string peer = config_.diameterPeerHost + ":" + std::to_string(config_.diameterPeerPort);
-    for (std::size_t i = 0; i < diameterClientPool_->size(); ++i) {
-        const auto info = admin::clientInfo(diameterClientPool_->client(i), static_cast<int>(i));
-        client_connection_state_gauge_family_ptr_
-            ->Add({{"source", config_.productName}, {"connection", std::to_string(i)}, {"peer", peer}})
-            .Set(admin::stateValue(info.state));
+    if (diameterClientPool_ && client_connection_state_gauge_family_ptr_) {
+        for (std::size_t i = 0; i < diameterClientPool_->size(); ++i) {
+            const auto info = admin::clientInfo(diameterClientPool_->client(i), static_cast<int>(i));
+            client_connection_state_gauge_family_ptr_
+                ->Add({{"source", config_.productName}, {"connection", std::to_string(i)}, {"peer", peer}})
+                .Set(admin::stateValue(info.state));
+        }
     }
+
+    // SCTP paths (multihoming): gauge per path and a Warning on every state change
+    std::map<std::string, std::string> seen;
+    for (const auto& c : connections()) {
+        for (const auto& p : c.paths) {
+            const std::string key = c.leg + "/" + std::to_string(c.index) + "/" + p.address;
+            seen[key] = p.state;
+            const auto previous = pathStates_.find(key);
+            if (previous == pathStates_.end() || previous->second != p.state) {
+                LOGWARNING(ert::tracing::Logger::warning(
+                    ert::tracing::Logger::asString("SCTP path of connection %s/%d, peer address %s: %s -> %s%s",
+                                                   c.leg.c_str(), c.index, p.address.c_str(),
+                                                   previous == pathStates_.end() ? "new" : previous->second.c_str(),
+                                                   p.state.c_str(), p.primary ? " (primary)" : ""),
+                    ERT_FILE_LOCATION));
+            }
+            if (sctp_path_state_gauge_family_ptr_) {
+                sctp_path_state_gauge_family_ptr_
+                    ->Add({{"source", config_.productName},
+                           {"leg", c.leg},
+                           {"connection", std::to_string(c.index)},
+                           {"path", p.address}})
+                    .Set(admin::pathStateValue(p.state));
+            }
+        }
+    }
+    pathStates_ = std::move(seen);
 }
 
 void Gateway::scheduleConnectionGauges() {

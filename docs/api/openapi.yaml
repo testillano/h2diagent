@@ -306,6 +306,24 @@ components:
           type: string
           enum: [answer, mute]
           description: Watchdog of the connection (mute = fault injection)
+        paths:
+          type: array
+          description: SCTP only (multihoming) - peer addresses with their state
+          items:
+            type: object
+            properties:
+              address:
+                type: string
+              state:
+                type: string
+                enum: [active, inactive, potentiallyFailed, unconfirmed, unknown]
+              primary:
+                type: boolean
+        localAddresses:
+          type: array
+          description: SCTP only - local addresses of the association
+          items:
+            type: string
       required: [leg, index, transport, state]
 
     CapabilitiesAvps:
@@ -327,6 +345,19 @@ components:
             serverPort:
               type: integer
               description: Listener port (0 = no listener)
+            serverLocalHost:
+              type: string
+              description: Listener address(es), a comma separated list for an SCTP multihomed listener
+            sctp:
+              type: object
+              description: Present when a leg is SCTP (path supervision options; 0 / "" = kernel defaults)
+              properties:
+                heartbeatIntervalMs:
+                  type: integer
+                pathMaxRetrans:
+                  type: integer
+                primaryPeerAddress:
+                  type: string
             serverTransport:
               type: string
               enum: [tcp, sctp]

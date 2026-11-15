@@ -85,6 +85,13 @@ struct GatewayConfig {
     // Harmless for TCP (pins the egress source; no multihoming involved).
     std::string diameterClientLocalHost;
 
+    // SCTP multihoming: listener addresses (--diameter-server-local-host; a comma
+    // separated list binds several, IPv4 or IPv6), and the association options
+    // (heartbeat interval, path max retransmissions, client primary peer address).
+    // diameterPeerHost and diameterClientLocalHost may also be lists over SCTP.
+    std::string diameterServerLocalHost{"0.0.0.0"};
+    diametercomm::SctpOptions sctp;
+
     // Diameter TLS/TCP security (Phase 1). NOTE: SCTP is NOT secured (DTLS/SCTP
     // out of scope -- see README "gap"): TLS options are ignored on SCTP.
     // Server (inbound): TLS is enabled when BOTH key and crt are provided
@@ -217,6 +224,8 @@ class Gateway {
     // Refresh the client connection state gauges (every second, on io_).
     void refreshConnectionGauges();
     void scheduleConnectionGauges();
+    // SCTP path states last seen (gauges, Warning log on every change): "<leg>/<index>/<address>" -> state
+    std::map<std::string, std::string> pathStates_;
 
     // Helper: map application-id to interface name
     std::string getInterfaceName(uint32_t appId) const;  // Helper: map command-code to command abbreviation
@@ -277,6 +286,7 @@ class Gateway {
 
     // Client connection state gauge (one series per pooled connection) and its refresh timer
     ert::metrics::gauge_family_t* client_connection_state_gauge_family_ptr_{};
+    ert::metrics::gauge_family_t* sctp_path_state_gauge_family_ptr_{};
     std::unique_ptr<boost::asio::steady_timer> gaugesTimer_;
     std::atomic<bool> gaugesStopping_{false};
 };

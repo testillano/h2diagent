@@ -48,6 +48,8 @@ server/PCRF mock-brain case turns the sidecar on.
 | `diameter.connections` | `1` | Outbound connections to the peer (`--diameter-connections`, client/both). `N>1` = round-robin pool, TCP only. |
 | `diameter.decodeAs` | `{}` | AVP name -> readable form of its inbound OctetString bytes (`--decode-as`, see the project README). Empty = hex. |
 | `diameter.cer` / `diameter.cea` | `{}` / `{}` | Extra AVPs of the CER sent / the CEA answered (`--cer` / `--cea`), AVP name -> value in the gateway mapping (e.g. `Supported-Vendor-Id: [10415]`). The AVPs built from the options win (see the project README). |
+| `diameter.serverLocalHost` / `clientLocalHost` | `0.0.0.0` / `""` | Listener / client local address(es); a comma separated list multihomes the SCTP association (see the project README). |
+| `diameter.sctp.*` | `0` / `""` | SCTP path supervision: `heartbeatIntervalMs`, `pathMaxRetrans`, `primaryPeerAddress` (client). Kernel defaults when not given. |
 | `diameter.timeoutMs` | `5000` | Transaction timeout (`--diameter-timeout-ms`); expired outbound requests get a 504. |
 | `http2ServerPort` | `8005` | HTTP/2 server where an (external) director posts outbound triggers. Exposed in the Service as `http2-trigger`. |
 | `adminPort` | `8079` | Admin interface `/admin/v1` (health, peers, configuration, logging), Service `gw-admin`; the probes call `GET /admin/v1/health`. `0` disables it (TCP probes on `http2ServerPort`). |

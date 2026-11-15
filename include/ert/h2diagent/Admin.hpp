@@ -54,7 +54,19 @@ struct ConnectionInfo {
     std::string peerOriginHost;
     std::string peerOriginRealm;
     std::string watchdog;  // "answer" | "mute" (empty: no connection)
+    // SCTP: peer addresses (paths) with their state and the primary one, and the
+    // local addresses (multihoming); empty for TCP
+    std::vector<diametercomm::sctp::PathInfo> paths{};
+    std::vector<std::string> localAddresses{};
 };
+
+/** Gauge value of an SCTP path state (h2diagent_diameter_sctp_path_state). */
+inline int pathStateValue(const std::string& state) {
+    if (state == "active") return 1;
+    if (state == "unconfirmed") return 2;
+    if (state == "potentiallyFailed") return 3;
+    return 0;  // inactive, unknown
+}
 
 /** A fault injection on one connection (PUT /admin/v1/peers/<leg>/<index>). */
 struct PeerOperation {
@@ -132,6 +144,11 @@ inline ConnectionInfo clientInfo(const diametercomm::DiameterClient& client, int
             info.peerOriginHost = peer->remoteOriginHost();
             info.peerOriginRealm = peer->remoteOriginRealm();
         }
+        if (client.transport() == diametercomm::Transport::SCTP && info.state != "closed" &&
+            info.state != "reconnecting") {
+            info.paths = peer->sctpPaths();
+            info.localAddresses = peer->sctpLocalAddresses();
+        }
     }
     if (info.peerAddress.empty() && !client.remoteHost().empty())
         info.peerAddress = client.remoteHost() + ":" + std::to_string(client.remotePort());
@@ -150,6 +167,10 @@ inline ConnectionInfo serverInfo(const diametercomm::Peer& peer, int index) {
     info.peerOriginHost = peer.remoteOriginHost();
     info.peerOriginRealm = peer.remoteOriginRealm();
     info.watchdog = peer.watchdogMuted() ? "mute" : "answer";
+    if (peer.transport() == diametercomm::Transport::SCTP) {
+        info.paths = peer.sctpPaths();
+        info.localAddresses = peer.sctpLocalAddresses();
+    }
     return info;
 }
 
@@ -161,6 +182,13 @@ inline nlohmann::json toJson(const ConnectionInfo& c) {
     if (!c.peerOriginHost.empty()) j["peerOriginHost"] = c.peerOriginHost;
     if (!c.peerOriginRealm.empty()) j["peerOriginRealm"] = c.peerOriginRealm;
     if (!c.watchdog.empty()) j["watchdog"] = c.watchdog;
+    if (!c.paths.empty()) {
+        nlohmann::json paths = nlohmann::json::array();
+        for (const auto& p : c.paths)
+            paths.push_back({{"address", p.address}, {"state", p.state}, {"primary", p.primary}});
+        j["paths"] = paths;
+    }
+    if (!c.localAddresses.empty()) j["localAddresses"] = c.localAddresses;
     return j;
 }
 
@@ -183,6 +211,7 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
     for (const auto& [avp, form] : c.decodeAs) decodeAs[avp] = form;
 
     nlohmann::json diameter = {{"serverPort", c.diameterPort},
+                               {"serverLocalHost", c.diameterServerLocalHost},
                                {"serverTransport", transportName(c.diameterServerTransport)},
                                {"serverTls", !c.diameterServerKeyFile.empty() && !c.diameterServerCrtFile.empty()},
                                {"originHost", c.originHost},
@@ -204,6 +233,12 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
                             {"tls", c.secureDiameterClient}};
     }
 
+    if (c.diameterServerTransport == diametercomm::Transport::SCTP ||
+        c.diameterClientTransport == diametercomm::Transport::SCTP) {
+        diameter["sctp"] = {{"heartbeatIntervalMs", c.sctp.heartbeatIntervalMs},
+                            {"pathMaxRetrans", c.sctp.pathMaxRetrans},
+                            {"primaryPeerAddress", c.sctp.primaryPeerAddress}};
+    }
     diameter["ceaResultCode"] = c.ceaResultCode < 0 ? nlohmann::json("none") : nlohmann::json(c.ceaResultCode);
     return {{"diameter", diameter},
             {"h2agent", {{"host", c.h2agentHost}, {"port", c.h2agentPort}}},

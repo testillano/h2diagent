@@ -647,10 +647,12 @@ Diameter:
   --dictionary <path>             Diameter dictionary JSON file (repeatable for multi-stack)
   --watchdog-interval <seconds>   DWR interval (default: 30)
   --diameter-timeout-ms <ms>      Transaction timeout in milliseconds (default: 5000)
-  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport;
-                                  sctp is single-homing (default: tcp)
-  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;
-                                  sctp is single-homing (default: tcp)
+  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport
+                                  (default: tcp)
+  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport
+                                  (default: tcp)
+  --diameter-server-local-host <ip[,ip...]>  Listener address(es) (default: 0.0.0.0; IPv4 or
+                                  IPv6). A list (same family) is an SCTP multihomed listener.
   --diameter-connections <N>      Number of outbound Diameter client connections to the
                                   peer (default: 1). N>1 opens a round-robin pool for
                                   robustness/headroom. TCP only: with sctp, N>1 fails fast
@@ -664,6 +666,15 @@ Diameter:
                                   local interfaces, e.g. docker0, that stall the handshake in
                                   COOKIE_WAIT). Default: auto-derive the egress source toward
                                   the peer. Harmless for TCP (pins the egress source).
+                                  SCTP: a comma separated list multihomes the association
+                                  (every address bound and advertised).
+                                  --diameter-peer-host may also be a list of addresses over
+                                  SCTP (several peer paths).
+
+SCTP (multihoming path supervision; kernel defaults when not given):
+  --sctp-heartbeat-interval-ms <ms>  Path heartbeat interval.
+  --sctp-path-max-retrans <n>     Retransmissions before a path is inactive.
+  --sctp-primary-peer-address <ip>  Peer address to use as primary path (client).
 
 Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):
   --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.
@@ -822,6 +833,165 @@ The file only **adds** AVPs, appended after the built ones; the options win:
 given). In the chart they are `diameter.cer` / `diameter.cea` values (mounted
 as files). To test a capabilities negotiation failure, change the options of
 one side (e.g. no common application).
+
+## SCTP multihoming
+
+An SCTP association may use several local and several peer addresses (paths),
+as the production Diameter links do. The **kernel SCTP stack** supervises every
+path with heartbeats, sends on the primary one and fails over to another when it
+stops answering: this is transparent to Diameter (the peer stays open, no
+reconnection). The gateway only configures it and reports it.
+
+| Option | Meaning |
+|---|---|
+| `--diameter-server-local-host 10.0.0.5,10.0.1.5` | multihomed listener: every address bound and advertised (IPv4 or IPv6, one family; `0.0.0.0` / `::` by default) |
+| `--diameter-client-local-host 10.0.0.5,10.0.1.5` | multihomed client: every address bound and advertised in the INIT (one address single-homes it; empty derives it from the route toward the peer) |
+| `--diameter-peer-host 10.0.0.7,10.0.1.7` | several peer addresses for the client (connected together, `SCTP_SOCKOPT_CONNECTX`) |
+| `--sctp-heartbeat-interval-ms <ms>` | path heartbeat interval (`HB.interval`) |
+| `--sctp-path-max-retrans <n>` | retransmissions before a path is inactive (`Path.Max.Retrans`) |
+| `--sctp-primary-peer-address <ip>` | peer address used as primary path (client) |
+
+A list of addresses is only valid over SCTP (TCP: start-up error). In the chart:
+`diameter.serverLocalHost`, `diameter.clientLocalHost`, `diameter.peerHost` and
+`diameter.sctp.*`.
+
+### Examples: failover towards a peer with two addresses
+
+The peer (the SUT) answers on two addresses (e.g. two VIPs), `192.0.2.10` and
+`198.51.100.10`, port 3868; the gateway pod has one or two networks.
+
+**Gateway as client** (it dials the peer), one local network: the two peer
+addresses are two paths; if `192.0.2.10` stops answering, the kernel sends on
+`198.51.100.10`, with no reconnection nor CER/CEA:
+
+```bash
+h2diagent --diameter-port 0 --diameter-client-transport sctp \
+  --diameter-peer-host 192.0.2.10,198.51.100.10 --diameter-peer-port 3868 \
+  --sctp-primary-peer-address 192.0.2.10 \
+  --sctp-heartbeat-interval-ms 1000 --sctp-path-max-retrans 2 \
+  --origin-host gw.example.com --origin-realm example.com --dictionary /opt/stacks/gx.json ...
+```
+
+Giving both peer addresses also covers the start: the association is set up
+on whichever answers (with a single `--diameter-peer-host` the INIT goes to
+that one only; the other address is learnt from the peer INIT-ACK).
+
+**Gateway as client, two local networks** (e.g. two Multus interfaces,
+`192.0.2.20` and `198.51.100.20`): the local side is redundant too (up to four
+paths, the kernel chooses the source per destination):
+
+```bash
+h2diagent --diameter-port 0 --diameter-client-transport sctp \
+  --diameter-peer-host 192.0.2.10,198.51.100.10 \
+  --diameter-client-local-host 192.0.2.20,198.51.100.20 \
+  --sctp-primary-peer-address 192.0.2.10 --sctp-heartbeat-interval-ms 1000 --sctp-path-max-retrans 2 ...
+```
+
+**Gateway as server** (the peer dials it, e.g. it mocks an OCS the SUT connects
+to): the listener advertises both local addresses, so the peer can fail over
+between them:
+
+```bash
+h2diagent --diameter-port 3868 --diameter-server-transport sctp \
+  --diameter-server-local-host 192.0.2.20,198.51.100.20 \
+  --sctp-heartbeat-interval-ms 1000 --sctp-path-max-retrans 2 ...
+```
+
+In the chart (client role):
+
+```yaml
+role: client
+diameter:
+  clientTransport: sctp
+  peerHost: "192.0.2.10,198.51.100.10"
+  peerPort: 3868
+  clientLocalHost: "192.0.2.20,198.51.100.20"   # "" with one network (derived)
+  sctp:
+    heartbeatIntervalMs: 1000
+    pathMaxRetrans: 2
+    primaryPeerAddress: "192.0.2.10"
+```
+
+**Timers**: with `--sctp-heartbeat-interval-ms 1000 --sctp-path-max-retrans 2`
+an idle path is declared inactive after about 2 to 3 seconds plus the RTO
+backoff (`rto_min` / `rto_max`); with traffic, retransmissions detect it
+earlier. Keep `association_max_retrans` (`sysctl net.sctp.association_max_retrans`,
+per network namespace, default 10) **not larger** than the sum of the
+`path_max_retrans` of the peer paths (RFC 4960 8.2): with 2 paths and 2
+retransmissions each, set it to 4, otherwise every path can be inactive while
+the association still counts the peer reachable. When the whole association
+fails, the gateway reconnects (CER/CEA again): that is a peer failure, not a
+path failover.
+
+Check it with `peers | pretty '.connections[0].paths'` (one `primary`, the
+states) and the `h2diagent_diameter_sctp_path_state` gauge; break a path with
+`iptables -A OUTPUT -d 192.0.2.10 -p sctp -j DROP` (`NET_ADMIN`) and see it go
+`inactive` while the traffic goes on.
+
+### Paths and their state
+
+`GET /admin/v1/peers` lists, for every SCTP connection, its `paths` (peer
+addresses with their `state` and the `primary` one) and its `localAddresses`:
+
+```json
+{"leg": "client", "index": 0, "transport": "sctp", "state": "open", ...,
+ "paths": [{"address": "10.0.0.7", "state": "active", "primary": true},
+           {"address": "10.0.1.7", "state": "inactive", "primary": false}],
+ "localAddresses": ["10.0.0.5", "10.0.1.5"]}
+```
+
+The state is `active` (confirmed, usable), `inactive` (failed: no heartbeat
+answer after `Path.Max.Retrans`), `potentiallyFailed`, `unconfirmed` (advertised,
+not yet confirmed by a heartbeat) or `unknown`. The gateway polls it every
+second: the gauge `h2diagent_diameter_sctp_path_state{source, leg, connection,
+path}` (0 inactive, 1 active, 2 unconfirmed, 3 potentially failed) and a Warning
+log on every change (`SCTP path of connection client/0, peer address 10.0.1.7:
+active -> inactive`). The state is polled, not notified: the SCTP notifications
+are delivered in the data stream and would mix with the Diameter bytes.
+
+### Path failover vs peer failover
+
+* **Path failover** (this section): one association, several addresses; the
+  kernel moves the traffic to another path, Diameter does not notice. Tested by
+  breaking one path (below).
+* **Peer failover**: several Diameter peers (another Origin-Host); a new
+  connection and CER/CEA. Emulated from the director: one gateway per peer, the
+  provision chooses the endpoint and switches on `502` with an error branch.
+
+### Kernel timers
+
+The failover time is set by the kernel SCTP timers (per association, defaults
+from `sysctl net.sctp.*`): `rto_initial` / `rto_min` / `rto_max` (retransmission
+timeout), `hb_interval` (`--sctp-heartbeat-interval-ms`), `path_max_retrans`
+(`--sctp-path-max-retrans`, default 5) and `association_max_retrans` (default 10:
+the whole association fails, then the gateway reconnects). A path is declared
+inactive after about `path_max_retrans` heartbeat periods without answer.
+
+### Deployment
+
+The gateway pod needs the interfaces of every address (several networks per pod,
+e.g. Multus / SENP): that is the deployment's, not the chart's. Load the `sctp`
+kernel module on the nodes. TLS is not available over SCTP (see the gap below).
+
+### Test recipe (loopback)
+
+The whole `127/8` is local on Linux, so two loopback addresses act as two paths
+without any network setup:
+
+```bash
+h2diagent --diameter-port 3868 --diameter-server-transport sctp \
+  --diameter-server-local-host 127.0.0.1,127.0.0.2 ...                         # server
+h2diagent --diameter-port 0 --diameter-client-transport sctp \
+  --diameter-peer-host 127.0.0.1,127.0.0.2 --diameter-client-local-host 127.0.0.3,127.0.0.4 \
+  --sctp-heartbeat-interval-ms 500 --sctp-path-max-retrans 2 ...               # client
+peers | pretty '.connections[0].paths'                                         # two active paths
+sudo iptables -A INPUT -s 127.0.0.2 -p sctp -j DROP                            # break one path (NET_ADMIN)
+peers | pretty '.connections[0].paths'                                         # 127.0.0.2 inactive, traffic goes on
+sudo iptables -D INPUT -s 127.0.0.2 -p sctp -j DROP                            # restore
+```
+
+The diametercomm unit tests run a multihomed association over loopback aliases
+(paths, primary, both legs) wherever the kernel has SCTP.
 
 ## Diameter client connection pool (`--diameter-connections`)
 

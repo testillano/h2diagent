@@ -552,3 +552,18 @@ TEST(Helpers, ErrorBody_MergesExtra) {
     EXPECT_EQ(nlohmann::json::parse(errorBody("e", {{"error", "x"}}))["error"], "e");
     EXPECT_EQ(nlohmann::json::parse(errorBody("e", nlohmann::json::array()))["error"], "e");
 }
+
+// =============================================================================
+// validateAddressOption (SCTP multihoming lists)
+// =============================================================================
+TEST(Helpers, ValidateAddressOption) {
+    std::string err;
+    EXPECT_TRUE(validateAddressOption("--diameter-peer-host", "peer.example.com", false, err));  // one value: any
+    EXPECT_TRUE(validateAddressOption("--diameter-peer-host", "10.0.0.1,10.0.0.2", true, err));
+    EXPECT_TRUE(validateAddressOption("--diameter-server-local-host", "2001:db8::1,2001:db8::2", true, err));
+    EXPECT_FALSE(validateAddressOption("--diameter-peer-host", "10.0.0.1,10.0.0.2", false, err));  // TCP
+    EXPECT_NE(err.find("--diameter-peer-host"), std::string::npos);
+    EXPECT_NE(err.find("sctp"), std::string::npos);
+    EXPECT_FALSE(validateAddressOption("--diameter-client-local-host", "10.0.0.1,2001:db8::1", true, err));  // mixed
+    EXPECT_FALSE(validateAddressOption("--diameter-client-local-host", "10.0.0.1,peer", true, err));  // not an address
+}

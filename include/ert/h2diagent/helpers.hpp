@@ -10,6 +10,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <ert/diametercomm/Sctp.hpp>
 #include <ert/http2comm/URLFunctions.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -224,6 +225,26 @@ inline bool validateDiameterConnections(int connections, bool isSctp, std::strin
         return false;
     }
     err.clear();
+    return true;
+}
+
+// Multihoming address lists (--diameter-peer-host, --diameter-client-local-host,
+// --diameter-server-local-host): a comma separated list of IP addresses of the
+// same family is only valid over SCTP; over TCP the option keeps one value. On
+// failure returns false and fills 'err' (naming the option).
+inline bool validateAddressOption(const std::string& option, const std::string& value, bool isSctp, std::string& err) {
+    err.clear();
+    if (value.find(',') == std::string::npos) return true;
+    if (!isSctp) {
+        err = option + " '" + value + "': a list of addresses (multihoming) needs the sctp transport";
+        return false;
+    }
+    std::vector<boost::asio::ip::address> addresses;
+    const std::string listErr = diametercomm::sctp::parseAddressList(value, addresses);
+    if (!listErr.empty()) {
+        err = option + ": " + listErr;
+        return false;
+    }
     return true;
 }
 

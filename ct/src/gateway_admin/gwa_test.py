@@ -214,3 +214,15 @@ def test_011_fault_cea_rejection(server_gw, client_gw):
     finally:
         assert put(server_gw, "/admin/v1/configuration?ceaResultCode=2001")[0] == 200
     assert wait_client_state(client_gw, ("open",), timeout=20)["state"] == "open"
+
+
+def test_012_sctp_fields_absent_on_tcp(server_gw, client_gw):
+    # the CT peers use TCP: no SCTP paths nor options listed (the multihomed SCTP
+    # association is checked by the diametercomm UT over loopback aliases)
+    for gw, leg in ((client_gw, "client"), (server_gw, "server")):
+        for c in open_connections(gw, leg):
+            assert "paths" not in c and "localAddresses" not in c
+    status, body = server_gw.get("/admin/v1/configuration")
+    assert status == 200
+    assert body["diameter"]["serverLocalHost"] == "0.0.0.0"
+    assert "sctp" not in body["diameter"]

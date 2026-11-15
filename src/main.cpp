@@ -64,10 +64,12 @@ void usage(const char* name) {
         << "  --dictionary <path>             Diameter dictionary JSON file (repeatable for multi-stack)\n"
         << "  --watchdog-interval <seconds>   DWR interval (default: 30)\n"
         << "  --diameter-timeout-ms <ms>      Transaction timeout in milliseconds (default: 5000)\n"
-        << "  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport;\n"
-        << "                                  sctp is single-homing (default: tcp)\n"
-        << "  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;\n"
-        << "                                  sctp is single-homing (default: tcp)\n"
+        << "  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport\n"
+        << "                                  (default: tcp)\n"
+        << "  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport\n"
+        << "                                  (default: tcp)\n"
+        << "  --diameter-server-local-host <ip[,ip...]>  Listener address(es) (default: 0.0.0.0; IPv4 or\n"
+        << "                                  IPv6). A list (same family) is an SCTP multihomed listener.\n"
         << "  --diameter-connections <N>      Number of outbound Diameter client connections to the\n"
         << "                                  peer (default: 1). N>1 opens a round-robin pool for\n"
         << "                                  robustness/headroom. TCP only: with sctp, N>1 fails fast\n"
@@ -79,7 +81,15 @@ void usage(const char* name) {
         << "                                  the INIT advertises ONLY this address (avoids non-routable\n"
         << "                                  local interfaces, e.g. docker0, that stall the handshake in\n"
         << "                                  COOKIE_WAIT). Default: auto-derive the egress source toward\n"
-        << "                                  the peer. Harmless for TCP (pins the egress source).\n\n"
+        << "                                  the peer. Harmless for TCP (pins the egress source).\n"
+        << "                                  SCTP: a comma separated list multihomes the association\n"
+        << "                                  (every address bound and advertised).\n"
+        << "                                  --diameter-peer-host may also be a list of addresses over\n"
+        << "                                  SCTP (several peer paths).\n\n"
+        << "SCTP (multihoming path supervision; kernel defaults when not given):\n"
+        << "  --sctp-heartbeat-interval-ms <ms>  Path heartbeat interval.\n"
+        << "  --sctp-path-max-retrans <n>     Retransmissions before a path is inactive.\n"
+        << "  --sctp-primary-peer-address <ip>  Peer address to use as primary path (client).\n\n"
         << "Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):\n"
         << "  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.\n"
         << "  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS.\n"
@@ -163,6 +173,10 @@ int main(int argc, char* argv[]) {
         {"diameter-client-transport", required_argument, nullptr, 0},
         {"diameter-connections", required_argument, nullptr, 0},
         {"diameter-client-local-host", required_argument, nullptr, 0},
+        {"diameter-server-local-host", required_argument, nullptr, 0},
+        {"sctp-heartbeat-interval-ms", required_argument, nullptr, 0},
+        {"sctp-path-max-retrans", required_argument, nullptr, 0},
+        {"sctp-primary-peer-address", required_argument, nullptr, 0},
         {"diameter-server-key", required_argument, nullptr, 0},
         {"diameter-server-crt", required_argument, nullptr, 0},
         {"diameter-server-key-password", required_argument, nullptr, 0},
@@ -232,6 +246,14 @@ int main(int argc, char* argv[]) {
                     config.diameterClientTransport = toTransport(norm);
                 } else if (name == "diameter-connections") {
                     config.diameterConnections = std::stoi(optarg);
+                } else if (name == "diameter-server-local-host") {
+                    config.diameterServerLocalHost = optarg;
+                } else if (name == "sctp-heartbeat-interval-ms") {
+                    config.sctp.heartbeatIntervalMs = std::stoul(optarg);
+                } else if (name == "sctp-path-max-retrans") {
+                    config.sctp.pathMaxRetrans = static_cast<uint16_t>(std::stoul(optarg));
+                } else if (name == "sctp-primary-peer-address") {
+                    config.sctp.primaryPeerAddress = optarg;
                 } else if (name == "diameter-client-local-host") {
                     config.diameterClientLocalHost = optarg;
                 } else if (name == "diameter-server-key")
@@ -346,16 +368,39 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Multihoming lists: SCTP only, addresses of one family
+    {
+        const bool clientSctp = config.diameterClientTransport == ert::diametercomm::Transport::SCTP;
+        const bool serverSctp = config.diameterServerTransport == ert::diametercomm::Transport::SCTP;
+        std::string addrErr;
+        if (!ert::h2diagent::helpers::validateAddressOption("--diameter-peer-host", config.diameterPeerHost, clientSctp,
+                                                            addrErr) ||
+            !ert::h2diagent::helpers::validateAddressOption("--diameter-client-local-host",
+                                                            config.diameterClientLocalHost, clientSctp, addrErr) ||
+            !ert::h2diagent::helpers::validateAddressOption("--diameter-server-local-host",
+                                                            config.diameterServerLocalHost, serverSctp, addrErr)) {
+            std::cerr << "Invalid option: " << addrErr << std::endl;
+            return 1;
+        }
+    }
+
     std::cout << "Starting " << progname << std::endl;
     std::cout << "Log level: " << logLevel << std::endl;
     std::cout << "Verbose (stdout): " << (verbose ? "true" : "false") << std::endl;
     std::cout << "Diameter listen port: " << config.diameterPort << std::endl;
-    if (config.diameterPort > 0)
+    if (config.diameterPort > 0) {
         std::cout << "Diameter server transport: " << transportName(config.diameterServerTransport) << std::endl;
+        std::cout << "Diameter server local host: " << config.diameterServerLocalHost << std::endl;
+    }
     if (!config.diameterPeerHost.empty()) {
         std::cout << "Diameter peer: " << config.diameterPeerHost << ":" << config.diameterPeerPort << std::endl;
         std::cout << "Diameter client transport: " << transportName(config.diameterClientTransport) << std::endl;
         std::cout << "Diameter client connections: " << config.diameterConnections << std::endl;
+        if (config.diameterClientTransport == ert::diametercomm::Transport::SCTP &&
+            (config.sctp.heartbeatIntervalMs || config.sctp.pathMaxRetrans || !config.sctp.primaryPeerAddress.empty()))
+            std::cout << "SCTP heartbeat interval (ms): " << config.sctp.heartbeatIntervalMs
+                      << ", path max retrans: " << config.sctp.pathMaxRetrans
+                      << ", primary peer address: " << config.sctp.primaryPeerAddress << std::endl;
         std::cout << "Diameter client local host: "
                   << (config.diameterClientLocalHost.empty() ? "auto" : config.diameterClientLocalHost) << std::endl;
     }

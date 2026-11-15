@@ -83,6 +83,18 @@ diameter:
   # tcp | sctp  (sctp is single-homing; CT uses tcp)
   serverTransport: tcp
   clientTransport: tcp
+  # SCTP multihoming (see the project README): listener address(es)
+  # (--diameter-server-local-host, a comma separated list over SCTP; "::" for IPv6),
+  # client local address(es) (--diameter-client-local-host; "" = derived from the
+  # route toward the peer), and the path supervision options (0 / "" = kernel
+  # defaults). peerHost may also be a list of peer addresses over SCTP. The pod
+  # needs those interfaces (e.g. Multus): the k8s network is the deployment's.
+  serverLocalHost: "0.0.0.0"
+  clientLocalHost: ""
+  sctp:
+    heartbeatIntervalMs: 0
+    pathMaxRetrans: 0
+    primaryPeerAddress: ""
 
 # Gateway ports: the h2agent ones + 5 (h2agent 8000 / 8074 / 8080), so the
 # gateway and an h2agent sidecar never collide in a pod.

@@ -131,6 +131,15 @@ TEST(Admin, ConfigurationHasNoSecrets) {
     EXPECT_EQ(j["adminPort"], 8079);
     EXPECT_EQ(j["metrics"]["prometheusPort"], 8085);
     EXPECT_EQ(j["diameter"]["ceaResultCode"], 2001);
+    EXPECT_EQ(j["diameter"]["serverLocalHost"], "0.0.0.0");
+    EXPECT_FALSE(j["diameter"].contains("sctp"));  // TCP legs
+    c.diameterClientTransport = ert::diametercomm::Transport::SCTP;
+    c.sctp.heartbeatIntervalMs = 500;
+    c.sctp.primaryPeerAddress = "10.0.0.2";
+    const auto withSctp = admin::configurationJson(c, {});
+    EXPECT_EQ(withSctp["diameter"]["sctp"]["heartbeatIntervalMs"], 500);
+    EXPECT_EQ(withSctp["diameter"]["sctp"]["primaryPeerAddress"], "10.0.0.2");
+    c.diameterClientTransport = ert::diametercomm::Transport::TCP;
     c.ceaResultCode = -1;
     EXPECT_EQ(admin::configurationJson(c, {})["diameter"]["ceaResultCode"], "none");
     c.ceaResultCode = 2001;
@@ -145,6 +154,23 @@ TEST(Admin, ConfigurationHasNoSecrets) {
 
     c.diameterPeerHost.clear();
     EXPECT_FALSE(admin::configurationJson(c, {})["diameter"].contains("peer"));  // no client leg
+}
+
+TEST(Admin, SctpPaths) {
+    EXPECT_EQ(admin::pathStateValue("inactive"), 0);
+    EXPECT_EQ(admin::pathStateValue("active"), 1);
+    EXPECT_EQ(admin::pathStateValue("unconfirmed"), 2);
+    EXPECT_EQ(admin::pathStateValue("potentiallyFailed"), 3);
+    EXPECT_EQ(admin::pathStateValue("unknown"), 0);
+
+    admin::ConnectionInfo c{"client", 0, "sctp", "open", "10.0.0.1:40000", "10.0.0.2:3868", "p", "r"};
+    EXPECT_FALSE(admin::toJson(c).contains("paths"));  // none: omitted
+    c.paths = {{"10.0.0.2", "active", true}, {"10.0.1.2", "inactive", false}};
+    c.localAddresses = {"10.0.0.1", "10.0.1.1"};
+    const auto j = admin::toJson(c);
+    EXPECT_EQ(j["paths"], nlohmann::json::parse(R"([{"address":"10.0.0.2","state":"active","primary":true},
+                                                  {"address":"10.0.1.2","state":"inactive","primary":false}])"));
+    EXPECT_EQ(j["localAddresses"], nlohmann::json::parse(R"(["10.0.0.1","10.0.1.1"])"));
 }
 
 TEST(Admin, PeerOperationParsing) {

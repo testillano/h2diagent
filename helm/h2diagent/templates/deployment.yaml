@@ -79,7 +79,8 @@ spec:
               {{- if $brainHost }}
               wait_tcp {{ $brainHost | quote }} {{ include "h2diagent.brainPort" . }} || exit 1
               {{- end }}
-              {{- if and (or (eq .Values.role "client") (eq .Values.role "both")) (ne .Values.diameter.peerHost "") }}
+              {{- /* a TCP probe cannot reach an SCTP peer (nor a list): the gateway reconnects anyway */}}
+              {{- if and (or (eq .Values.role "client") (eq .Values.role "both")) (ne .Values.diameter.peerHost "") (eq .Values.diameter.clientTransport "tcp") }}
               wait_tcp {{ .Values.diameter.peerHost | quote }} {{ .Values.diameter.peerPort }} || exit 1
               {{- end }}
               echo "[wait] dependencies ready; starting h2diagent"
@@ -118,6 +119,28 @@ spec:
             - {{ .Values.diameter.serverTransport | quote }}
             - "--diameter-client-transport"
             - {{ .Values.diameter.clientTransport | quote }}
+            {{- if include "h2diagent.hasServer" . }}
+            - "--diameter-server-local-host"
+            - {{ .Values.diameter.serverLocalHost | default "0.0.0.0" | quote }}
+            {{- end }}
+            {{- if .Values.diameter.clientLocalHost }}
+            - "--diameter-client-local-host"
+            - {{ .Values.diameter.clientLocalHost | quote }}
+            {{- end }}
+            {{- with .Values.diameter.sctp }}
+            {{- if .heartbeatIntervalMs }}
+            - "--sctp-heartbeat-interval-ms"
+            - {{ .heartbeatIntervalMs | quote }}
+            {{- end }}
+            {{- if .pathMaxRetrans }}
+            - "--sctp-path-max-retrans"
+            - {{ .pathMaxRetrans | quote }}
+            {{- end }}
+            {{- if .primaryPeerAddress }}
+            - "--sctp-primary-peer-address"
+            - {{ .primaryPeerAddress | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.diameter.cer }}
             - "--cer"
             - "/opt/capabilities/cer.json"
