@@ -605,39 +605,54 @@ $ docker run --rm -it -p 3868:3868 -p 8074:8074 -p 8080:8080 ghcr.io/testillano/
 
 ## Command-line options
 
+As given by `h2diagent --help` (there is no admin interface yet: its port is not an option):
+
 ```
+$ h2diagent --help
 h2diagent - C++ HTTP/2 - DIAMETER Gateway Service (translation agent)
+
+Usage: h2diagent [options]
+
+Options:
 
 Diameter:
   --diameter-port <port>          Diameter listen port (default: 3868)
   --diameter-peer-host <host>     Remote Diameter peer host (for outbound)
   --diameter-peer-port <port>     Remote Diameter peer port (default: 3868)
-  --origin-host <identity>        Origin-Host for CER
+  --origin-host <identity>        Origin-Host for CER (default: hostname)
   --origin-realm <realm>          Origin-Realm for CER
   --product-name <name>           Product-Name for CER (default: h2diagent)
-  --dictionary <path>             Diameter dictionary JSON file path
+  --dictionary <path>             Diameter dictionary JSON file (repeatable for multi-stack)
   --watchdog-interval <seconds>   DWR interval (default: 30)
-  --diameter-server-transport <tcp|sctp>  Inbound server (listener) transport;
+  --diameter-timeout-ms <ms>      Transaction timeout in milliseconds (default: 5000)
+  --diameter-server-transport <tcp|sctp>  Inbound Diameter server (listener) transport;
                                   sctp is single-homing (default: tcp)
-  --diameter-client-transport <tcp|sctp>  Outbound client (to peer) transport;
+  --diameter-client-transport <tcp|sctp>  Outbound Diameter client (to peer) transport;
                                   sctp is single-homing (default: tcp)
-  --diameter-connections <N>      Number of outbound Diameter client connections to
-                                  the peer (default: 1). N>1 opens a round-robin pool.
-                                  TCP only; with sctp, N>1 fails fast at startup.
-  --decode-as <AVP>=<form>        Decode this OctetString AVP towards h2agent in a readable
-                                  form (text|ipv4|ipv6|ipv6Prefix|msTimeZone|uli) instead of
-                                  hex; {"hex": ...} when its bytes do not fit. Repeatable.
+  --diameter-connections <N>      Number of outbound Diameter client connections to the
+                                  peer (default: 1). N>1 opens a round-robin pool for
+                                  robustness/headroom. TCP only: with sctp, N>1 fails fast
+                                  (SCTP uses a single association; multi-streaming not
+                                  implemented). The peer must accept N connections per
+                                  origin-host.
 
-Diameter TLS (TCP only; SCTP/DTLS not supported):
-  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS
-  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS
-                                  (both key and crt required to secure the server)
-  --diameter-server-key-password <pass>  Password for the server key (optional)
-  --secure-diameter-client        Enable TLS on the outbound Diameter client
-  --diameter-client-ca <path>     CA (PEM) to verify the remote server cert (optional)
-  --diameter-client-crt <path>    Client certificate (PEM) for mutual TLS (optional)
-  --diameter-client-key <path>    Client private key (PEM) for mutual TLS (optional)
-  --diameter-client-key-password <pass>  Password for the client key (optional)
+  --diameter-client-local-host <ip>  Local source address to bind the outbound Diameter
+                                  client to. For SCTP this single-homes the association so
+                                  the INIT advertises ONLY this address (avoids non-routable
+                                  local interfaces, e.g. docker0, that stall the handshake in
+                                  COOKIE_WAIT). Default: auto-derive the egress source toward
+                                  the peer. Harmless for TCP (pins the egress source).
+
+Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):
+  --diameter-server-key <path>    Server private key (PEM) to enable inbound TLS.
+  --diameter-server-crt <path>    Server certificate (PEM) to enable inbound TLS.
+                                  Both key and crt must be provided to secure the server.
+  --diameter-server-key-password <pass>  Password for the server key (optional).
+  --secure-diameter-client        Enable TLS on the outbound Diameter client.
+  --diameter-client-ca <path>     CA (PEM) to verify the remote server cert (optional).
+  --diameter-client-crt <path>    Client certificate (PEM) for mutual TLS (optional).
+  --diameter-client-key <path>    Client private key (PEM) for mutual TLS (optional).
+  --diameter-client-key-password <pass>  Password for the client key (optional).
 
 HTTP/2 (towards h2agent):
   --h2agent-host <host>           h2agent traffic server host (default: localhost)
@@ -648,13 +663,25 @@ HTTP/2 (for outbound from h2agent):
 
 General:
   --workers <n>                   Worker threads (default: nproc)
-  --log-level <level>             Log level (default: Warning)
-  --verbose                       Output log traces on console
-  --admin-port <port>             Admin API port (default: 8074)
-  --prometheus-port <port>        Prometheus scrape port (default: 9090)
+  [-l|--log-level <level>]        Log level: Debug|Informational|Notice|Warning|Error (default: Warning)
+  [-v|--verbose]                  Output log traces on console
+  --prometheus-port <port>        Prometheus scrape port (default: 8085)
   --disable-metrics               Disable prometheus metrics
-  --version                       Program version
-  --help                          This help
+
+  --metrics-additional-label <AVP>  Add an extra label to the Diameter CLIENT metrics,
+                                  valued from this AVP (by name) of each outbound request
+                                  (e.g. CC-Request-Type). Repeatable for several labels.
+                                  Use LOW-cardinality AVPs only. (application_id is always
+                                  present, taken from the message header.)
+
+  --decode-as <AVP>=<form>        Decode this OctetString AVP (by name) towards h2agent in a
+                                  readable form instead of hex: {"<form>": ...}, or
+                                  {"hex": ...} when its bytes do not fit. Forms: text|ipv4|
+                                  ipv6|ipv6Prefix|msTimeZone|uli (the readable forms accepted
+                                  outbound). Repeatable. Default: hex for every OctetString.
+
+  [-V|--version]                  Program version
+  [-h|--help]                     This help
 ```
 
 ## Diameter client connection pool (`--diameter-connections`)
