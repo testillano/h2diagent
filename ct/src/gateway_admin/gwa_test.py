@@ -124,3 +124,93 @@ def test_007_capabilities_avps(server_gw, client_gw):
     assert open_connections(client_gw, "client")
     assert open_connections(server_gw, "server")
 
+
+
+# ----------------------------------------------------------------------------
+# Base protocol fault injection (D4): the client gateway dials the server one.
+# Every test leaves both gateways as found (one open connection, CEA 2001).
+# ----------------------------------------------------------------------------
+
+def client_state(client_gw):
+    status, body = client_gw.get("/admin/v1/peers")
+    assert status == 200
+    return [c for c in body["connections"] if c["leg"] == "client"][0]
+
+
+def wait_client_state(client_gw, states, timeout=10):
+    deadline = time.time() + timeout
+    while True:
+        c = client_state(client_gw)
+        if c["state"] in states or time.time() > deadline:
+            return c
+        time.sleep(0.2)
+
+
+def outbound_status():
+    """Status of a CCR posted to the client gateway (502 when it has no open peer)."""
+    from hyper import HTTP20Connection
+    conn = HTTP20Connection("{}:8005".format(CLIENT_HOST))
+    body = '{"Session-Id": "client.example.com;gwa-fault;1", "Origin-Host": "client.example.com", ' \
+           '"Origin-Realm": "example.com", "Destination-Realm": "example.com", "Auth-Application-Id": 16777238, ' \
+           '"CC-Request-Type": 1, "CC-Request-Number": 0}'
+    conn.request("POST", "/diameter/gx/CCR", body=body, headers={"content-type": "application/json"})
+    resp = conn.get_response()
+    resp.read()
+    return resp.status
+
+
+def put(gw, path):
+    return gw.request("PUT", path)
+
+
+def test_008_fault_watchdog_mute(server_gw, client_gw):
+    assert open_connections(client_gw, "client")
+    try:
+        assert put(client_gw, "/admin/v1/peers/client/0?watchdog=mute")[0] == 200
+        assert client_state(client_gw)["watchdog"] == "mute"
+        server_peer = open_connections(server_gw, "server")[0]
+        assert put(server_gw, "/admin/v1/peers/server/{}?watchdog=mute".format(server_peer["index"]))[0] == 200
+        assert open_connections(server_gw, "server")[0]["watchdog"] == "mute"
+    finally:
+        put(client_gw, "/admin/v1/peers/client/0?watchdog=answer")
+        for c in open_connections(server_gw, "server"):
+            put(server_gw, "/admin/v1/peers/server/{}?watchdog=answer".format(c["index"]))
+    assert client_state(client_gw)["watchdog"] == "answer"
+    # the parameters are checked
+    assert put(client_gw, "/admin/v1/peers/client/0?watchdog=loud")[0] == 400
+    assert put(client_gw, "/admin/v1/peers/client/9?watchdog=mute")[0] == 404
+
+
+def test_009_fault_close_reconnects(client_gw):
+    assert open_connections(client_gw, "client")
+    assert put(client_gw, "/admin/v1/peers/client/0?action=close")[0] == 200
+    assert wait_client_state(client_gw, ("open",))["state"] == "open"  # reconnected with its backoff
+
+
+def test_010_fault_dpr_and_connect(client_gw):
+    assert open_connections(client_gw, "client")
+    try:
+        status, body = put(client_gw, "/admin/v1/peers/client/0?action=dpr&cause=DO_NOT_WANT_TO_TALK_TO_YOU")
+        assert status == 200, body
+        assert wait_client_state(client_gw, ("closed",))["state"] == "closed"  # no reconnection
+        time.sleep(1.5)
+        assert client_state(client_gw)["state"] == "closed"
+        assert outbound_status() == 502
+    finally:
+        assert put(client_gw, "/admin/v1/peers/client/0?action=connect")[0] == 200
+    assert wait_client_state(client_gw, ("open",))["state"] == "open"
+
+
+def test_011_fault_cea_rejection(server_gw, client_gw):
+    assert open_connections(client_gw, "client")
+    try:
+        assert put(server_gw, "/admin/v1/configuration?ceaResultCode=5010")[0] == 200
+        assert server_gw.get("/admin/v1/configuration")[1]["diameter"]["ceaResultCode"] == 5010
+        assert put(client_gw, "/admin/v1/peers/client/0?action=close")[0] == 200
+        time.sleep(3)  # several reconnections, every one rejected
+        assert client_state(client_gw)["state"] != "open"
+        assert outbound_status() == 502
+        assert put(server_gw, "/admin/v1/configuration?ceaResultCode=bad")[0] == 400
+    finally:
+        assert put(server_gw, "/admin/v1/configuration?ceaResultCode=2001")[0] == 200
+    assert wait_client_state(client_gw, ("open",), timeout=20)["state"] == "open"

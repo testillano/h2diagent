@@ -96,7 +96,105 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /admin/v1/peers/{leg}/{index}:
+    put:
+      tags: [peers]
+      summary: Base protocol fault injection on a connection
+      description: >
+        Give exactly one of `watchdog` or `action`. `watchdog=mute` stops answering
+        the DWRs and sending them (`answer` restores). `action=close` closes
+        abruptly (a client connection reconnects with its backoff); `action=dpr`
+        disconnects orderly (a client connection does not reconnect until
+        `action=connect`, client connections only).
+      parameters:
+        - name: leg
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [client, server]
+        - name: index
+          in: path
+          required: true
+          description: As listed by GET peers
+          schema:
+            type: integer
+            minimum: 0
+        - name: watchdog
+          in: query
+          schema:
+            type: string
+            enum: [mute, answer]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [close, dpr, connect]
+        - name: cause
+          in: query
+          description: Disconnect-Cause of a dpr
+          schema:
+            type: string
+            enum: [REBOOTING, BUSY, DO_NOT_WANT_TO_TALK_TO_YOU]
+            default: REBOOTING
+      responses:
+        '200':
+          description: Done
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '404':
+          description: No such connection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /admin/v1/configuration:
+    put:
+      tags: [configuration]
+      summary: Set the CEA Result-Code (fault injection)
+      description: >
+        Result-Code of the CEA answered to the peers connecting from now on
+        (server leg): 2001 accepts, another code rejects the capabilities
+        exchange and closes, `none` answers no CEA. The connected peers are not
+        affected.
+      parameters:
+        - name: ceaResultCode
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "5010"
+            description: 1000..5999 or none
+      responses:
+        '200':
+          description: Set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '400':
+          description: Invalid value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
+        '404':
+          description: No Diameter server leg
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponse'
     get:
       tags: [configuration]
       summary: Running configuration
@@ -204,6 +302,10 @@ components:
           description: Origin-Host of the peer (absent until the capabilities exchange)
         peerOriginRealm:
           type: string
+        watchdog:
+          type: string
+          enum: [answer, mute]
+          description: Watchdog of the connection (mute = fault injection)
       required: [leg, index, transport, state]
 
     CapabilitiesAvps:
@@ -240,6 +342,12 @@ components:
               type: integer
             timeoutMs:
               type: integer
+            ceaResultCode:
+              description: CEA Result-Code answered (server leg), or "none"
+              oneOf:
+                - type: integer
+                - type: string
+                  enum: [none]
             dictionaries:
               type: array
               items:

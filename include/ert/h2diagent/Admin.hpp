@@ -18,6 +18,11 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
  *   GET /admin/v1/logging                 200 current level (text)
  *   PUT /admin/v1/logging?level=<level>   200 / 400
  *
+ * Base protocol fault injection (tests of the peer robustness):
+ *   PUT /admin/v1/peers/<leg>/<index>?watchdog=mute|answer
+ *   PUT /admin/v1/peers/<leg>/<index>?action=close|dpr[&cause=<cause>]|connect
+ *   PUT /admin/v1/configuration?ceaResultCode=<code>|none
+ *
  * Another method on a known resource is 405; an unknown path is 404. The
  * interface is not authenticated (as the h2agent one).
  */
@@ -48,7 +53,30 @@ struct ConnectionInfo {
     std::string peerAddress;
     std::string peerOriginHost;
     std::string peerOriginRealm;
+    std::string watchdog;  // "answer" | "mute" (empty: no connection)
 };
+
+/** A fault injection on one connection (PUT /admin/v1/peers/<leg>/<index>). */
+struct PeerOperation {
+    std::string leg;       // client | server
+    int index{0};          // as listed by GET peers
+    std::string watchdog;  // "" | mute | answer
+    std::string action;    // "" | close | dpr | connect
+    uint32_t cause{0};     // Disconnect-Cause of a dpr: 0 REBOOTING, 1 BUSY, 2 DO_NOT_WANT_TO_TALK_TO_YOU
+};
+
+/** Disconnect-Cause by name (RFC 6733 5.4.3); false when unknown. */
+inline bool disconnectCause(const std::string& name, uint32_t& cause) {
+    if (name.empty() || name == "REBOOTING")
+        cause = 0;
+    else if (name == "BUSY")
+        cause = 1;
+    else if (name == "DO_NOT_WANT_TO_TALK_TO_YOU")
+        cause = 2;
+    else
+        return false;
+    return true;
+}
 
 inline std::string transportName(diametercomm::Transport t) {
     return t == diametercomm::Transport::SCTP ? "sctp" : "tcp";
@@ -96,6 +124,7 @@ inline ConnectionInfo clientInfo(const diametercomm::DiameterClient& client, int
     info.index = index;
     info.transport = transportName(client.transport());
     info.state = stateName(client.state(), client.reconnecting());
+    info.watchdog = client.watchdogMuted() ? "mute" : "answer";
     if (auto peer = client.peer()) {
         info.localAddress = endpointOrEmpty(peer->localEndpoint());
         info.peerAddress = endpointOrEmpty(peer->remoteEndpoint());
@@ -120,6 +149,7 @@ inline ConnectionInfo serverInfo(const diametercomm::Peer& peer, int index) {
     info.peerAddress = endpointOrEmpty(peer.remoteEndpoint());
     info.peerOriginHost = peer.remoteOriginHost();
     info.peerOriginRealm = peer.remoteOriginRealm();
+    info.watchdog = peer.watchdogMuted() ? "mute" : "answer";
     return info;
 }
 
@@ -130,6 +160,7 @@ inline nlohmann::json toJson(const ConnectionInfo& c) {
     if (!c.peerAddress.empty()) j["peerAddress"] = c.peerAddress;
     if (!c.peerOriginHost.empty()) j["peerOriginHost"] = c.peerOriginHost;
     if (!c.peerOriginRealm.empty()) j["peerOriginRealm"] = c.peerOriginRealm;
+    if (!c.watchdog.empty()) j["watchdog"] = c.watchdog;
     return j;
 }
 
@@ -173,6 +204,7 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
                             {"tls", c.secureDiameterClient}};
     }
 
+    diameter["ceaResultCode"] = c.ceaResultCode < 0 ? nlohmann::json("none") : nlohmann::json(c.ceaResultCode);
     return {{"diameter", diameter},
             {"h2agent", {{"host", c.h2agentHost}, {"port", c.h2agentPort}}},
             {"http2ServerPort", c.http2ServerPort},
@@ -213,6 +245,45 @@ inline Response result(int status, bool ok, const std::string& response) {
     return jsonResponse(status, {{"result", ok ? "true" : "false"}, {"response", response}});
 }
 
+/** CEA Result-Code text: "none" (-1: no CEA) or an integer 1000..5999. */
+inline bool parseCeaResultCode(const std::string& text, int32_t& code) {
+    if (text == "none") {
+        code = -1;
+        return true;
+    }
+    if (text.empty() || text.size() > 4 || text.find_first_not_of("0123456789") != std::string::npos) return false;
+    code = std::stoi(text);
+    return code >= 1000 && code <= 5999;
+}
+
+/**
+ * Parses PUT /admin/v1/peers/<leg>/<index> (tail "<leg>/<index>") and its query.
+ * @return empty on success, else the error
+ */
+inline std::string parsePeerOperation(const std::string& tail, const std::string& query, PeerOperation& op) {
+    const std::size_t slash = tail.find('/');
+    if (slash == std::string::npos) return "expected /admin/v1/peers/<client|server>/<index>";
+    op.leg = tail.substr(0, slash);
+    const std::string index = tail.substr(slash + 1);
+    if (op.leg != "client" && op.leg != "server") return "unknown leg '" + op.leg + "' (client, server)";
+    if (index.empty() || index.size() > 6 || index.find_first_not_of("0123456789") != std::string::npos)
+        return "invalid index '" + index + "'";
+    op.index = std::stoi(index);
+    op.watchdog = queryValue(query, "watchdog");
+    op.action = queryValue(query, "action");
+    if (op.watchdog.empty() == op.action.empty()) return "give one of 'watchdog' (mute|answer) or 'action'";
+    if (!op.watchdog.empty() && op.watchdog != "mute" && op.watchdog != "answer")
+        return "invalid watchdog '" + op.watchdog + "' (mute, answer)";
+    if (!op.action.empty() && op.action != "close" && op.action != "dpr" && op.action != "connect")
+        return "invalid action '" + op.action + "' (close, dpr, connect)";
+    const std::string cause = queryValue(query, "cause");
+    if (!cause.empty() && op.action != "dpr") return "'cause' only goes with action=dpr";
+    if (!disconnectCause(cause, op.cause))
+        return "invalid cause '" + cause + "' (REBOOTING, BUSY, DO_NOT_WANT_TO_TALK_TO_YOU)";
+    if (op.action == "connect" && op.leg != "client") return "action=connect is for client connections";
+    return "";
+}
+
 /**
  * Route an admin request.
  *
@@ -221,13 +292,34 @@ inline Response result(int status, bool ok, const std::string& response) {
  */
 inline Response handle(const std::string& method, const std::string& path, const std::string& query,
                        const std::function<std::vector<ConnectionInfo>()>& peers,
-                       const std::function<nlohmann::json()>& configuration) {
+                       const std::function<nlohmann::json()>& configuration,
+                       const std::function<Response(const PeerOperation&)>& peerOperation = nullptr,
+                       const std::function<Response(int32_t ceaResultCode)>& setCeaResultCode = nullptr) {
     static const std::string prefix = "/admin/v1/";
     std::string resource = path.compare(0, prefix.size(), prefix) == 0 ? path.substr(prefix.size()) : "";
     while (!resource.empty() && resource.back() == '/') resource.pop_back();
 
+    // fault injection
+    if (resource.compare(0, 6, "peers/") == 0) {
+        if (method != "PUT") return result(405, false, "method not allowed (PUT)");
+        PeerOperation op;
+        const std::string err = parsePeerOperation(resource.substr(6), query, op);
+        if (!err.empty()) return result(400, false, err);
+        return peerOperation ? peerOperation(op)
+                             : result(404, false, "no connection " + op.leg + "/" + std::to_string(op.index));
+    }
+    if (resource == "configuration" && method == "PUT") {
+        const std::string text = queryValue(query, "ceaResultCode");
+        int32_t code = 0;
+        if (!parseCeaResultCode(text, code))
+            return result(400, false, "invalid ceaResultCode '" + text + "' (1000..5999 or none)");
+        return setCeaResultCode ? setCeaResultCode(code) : result(404, false, "no Diameter server leg");
+    }
+
     if (resource == "health" || resource == "peers" || resource == "configuration") {
-        if (method != "GET") return result(405, false, "method not allowed (GET)");
+        if (method != "GET")
+            return result(405, false,
+                          resource == "configuration" ? "method not allowed (GET, PUT)" : "method not allowed (GET)");
         if (resource == "health") return jsonResponse(200, {{"status", "healthy"}});
         if (resource == "peers") return jsonResponse(200, peersJson(peers ? peers() : std::vector<ConnectionInfo>{}));
         return jsonResponse(200, configuration ? configuration() : nlohmann::json::object());

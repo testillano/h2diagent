@@ -44,7 +44,9 @@ namespace h2diagent {
 
 namespace admin {
 struct ConnectionInfo;
-}
+struct PeerOperation;
+struct Response;
+}  // namespace admin
 
 /**
  * Configuration for the Gateway.
@@ -123,6 +125,9 @@ struct GatewayConfig {
     // Optional: extra AVPs of the CER sent (client leg) / the CEA answered (server
     // leg), from --cer / --cea json files (AVP name -> value, gateway mapping;
     // see CapabilitiesAvps.hpp). null = none.
+    // CEA Result-Code answered on the server leg (--cea-result-code): 2001
+    // opens, another code rejects the capabilities exchange, -1 answers nothing.
+    int32_t ceaResultCode{2001};
     std::string cerFile;
     std::string ceaFile;
     nlohmann::json cerAvps;
@@ -206,6 +211,9 @@ class Gateway {
     void startAdminServer();
     // Diameter connections snapshot (client pool, then server leg).
     std::vector<admin::ConnectionInfo> connections() const;
+    // Base protocol fault injection (PUT /admin/v1/peers/<leg>/<index>, PUT configuration).
+    admin::Response peerOperation(const admin::PeerOperation& op);
+    admin::Response setCeaResultCode(int32_t code);
     // Refresh the client connection state gauges (every second, on io_).
     void refreshConnectionGauges();
     void scheduleConnectionGauges();

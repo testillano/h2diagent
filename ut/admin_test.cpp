@@ -130,6 +130,10 @@ TEST(Admin, ConfigurationHasNoSecrets) {
     EXPECT_EQ(j["http2ServerPort"], 8005);
     EXPECT_EQ(j["adminPort"], 8079);
     EXPECT_EQ(j["metrics"]["prometheusPort"], 8085);
+    EXPECT_EQ(j["diameter"]["ceaResultCode"], 2001);
+    c.ceaResultCode = -1;
+    EXPECT_EQ(admin::configurationJson(c, {})["diameter"]["ceaResultCode"], "none");
+    c.ceaResultCode = 2001;
 
     EXPECT_FALSE(j["diameter"].contains("cer"));  // no --cer / --cea
     c.cerFile = "/config/cer.json";
@@ -141,6 +145,86 @@ TEST(Admin, ConfigurationHasNoSecrets) {
 
     c.diameterPeerHost.clear();
     EXPECT_FALSE(admin::configurationJson(c, {})["diameter"].contains("peer"));  // no client leg
+}
+
+TEST(Admin, PeerOperationParsing) {
+    admin::PeerOperation op;
+    EXPECT_EQ(admin::parsePeerOperation("client/0", "watchdog=mute", op), "");
+    EXPECT_EQ(op.leg, "client");
+    EXPECT_EQ(op.index, 0);
+    EXPECT_EQ(op.watchdog, "mute");
+    EXPECT_EQ(admin::parsePeerOperation("server/2", "action=dpr&cause=DO_NOT_WANT_TO_TALK_TO_YOU", op), "");
+    EXPECT_EQ(op.action, "dpr");
+    EXPECT_EQ(op.cause, 2u);
+    EXPECT_EQ(op.index, 2);
+    EXPECT_EQ(admin::parsePeerOperation("client/1", "action=dpr", op), "");
+    EXPECT_EQ(op.cause, 0u);  // REBOOTING by default
+    EXPECT_EQ(admin::parsePeerOperation("client/0", "action=connect", op), "");
+    EXPECT_EQ(admin::parsePeerOperation("server/0", "action=close", op), "");
+
+    for (const auto& bad : std::vector<std::pair<std::string, std::string>>{
+             {"client", "action=close"},                  // no index
+             {"other/0", "action=close"},                 // leg
+             {"client/x", "action=close"},                // index
+             {"client/0", ""},                            // nothing
+             {"client/0", "watchdog=mute&action=close"},  // both
+             {"client/0", "watchdog=loud"},               // watchdog value
+             {"client/0", "action=reboot"},               // action
+             {"client/0", "action=dpr&cause=BORED"},      // cause
+             {"client/0", "action=close&cause=BUSY"},     // cause without dpr
+             {"server/0", "action=connect"},              // connect is client only
+         }) {
+        SCOPED_TRACE(bad.first + "?" + bad.second);
+        EXPECT_NE(admin::parsePeerOperation(bad.first, bad.second, op), "");
+    }
+}
+
+TEST(Admin, CeaResultCodeParsing) {
+    int32_t code = 0;
+    EXPECT_TRUE(admin::parseCeaResultCode("5010", code));
+    EXPECT_EQ(code, 5010);
+    EXPECT_TRUE(admin::parseCeaResultCode("2001", code));
+    EXPECT_TRUE(admin::parseCeaResultCode("none", code));
+    EXPECT_EQ(code, -1);
+    for (const char* bad : {"", "999", "6000", "-1", "50x0", "12345", "None"}) {
+        SCOPED_TRACE(bad);
+        EXPECT_FALSE(admin::parseCeaResultCode(bad, code));
+    }
+}
+
+TEST(Admin, FaultInjectionRouting) {
+    admin::PeerOperation seen;
+    int32_t ceaSeen = 0;
+    const auto peerOp = [&](const admin::PeerOperation& op) {
+        seen = op;
+        return admin::result(200, true, "done");
+    };
+    const auto cea = [&](int32_t code) {
+        ceaSeen = code;
+        return admin::result(200, true, "done");
+    };
+    auto put = [&](const std::string& path, const std::string& query) {
+        return admin::handle("PUT", path, query, nullptr, nullptr, peerOp, cea);
+    };
+
+    EXPECT_EQ(put("/admin/v1/peers/client/0", "watchdog=mute").status, 200);
+    EXPECT_EQ(seen.watchdog, "mute");
+    EXPECT_EQ(put("/admin/v1/peers/server/1", "action=close").status, 200);
+    EXPECT_EQ(seen.leg, "server");
+    EXPECT_EQ(put("/admin/v1/peers/server/1", "action=connect").status, 400);
+    EXPECT_EQ(admin::handle("GET", "/admin/v1/peers/client/0", "", nullptr, nullptr, peerOp, cea).status, 405);
+
+    EXPECT_EQ(put("/admin/v1/configuration", "ceaResultCode=5010").status, 200);
+    EXPECT_EQ(ceaSeen, 5010);
+    EXPECT_EQ(put("/admin/v1/configuration", "ceaResultCode=none").status, 200);
+    EXPECT_EQ(ceaSeen, -1);
+    EXPECT_EQ(put("/admin/v1/configuration", "ceaResultCode=7").status, 400);
+    EXPECT_EQ(put("/admin/v1/configuration", "").status, 400);
+    EXPECT_EQ(admin::handle("POST", "/admin/v1/configuration", "", nullptr, nullptr, peerOp, cea).status, 405);
+
+    // without the callbacks (no such connection / no server leg)
+    EXPECT_EQ(admin::handle("PUT", "/admin/v1/peers/client/0", "action=close", nullptr, nullptr).status, 404);
+    EXPECT_EQ(admin::handle("PUT", "/admin/v1/configuration", "ceaResultCode=5010", nullptr, nullptr).status, 404);
 }
 
 class AdminConnections_test : public ::testing::Test {
@@ -184,6 +268,11 @@ TEST_F(AdminConnections_test, ClientAndServerLegs) {
     EXPECT_EQ(info.peerOriginHost, "server.example.com");
     EXPECT_EQ(info.peerOriginRealm, "example.com");
     EXPECT_EQ(admin::stateValue(info.state), 1);
+    EXPECT_EQ(info.watchdog, "answer");
+    pool.client(0).setWatchdogMuted(true);
+    EXPECT_EQ(admin::clientInfo(pool.client(0), 0).watchdog, "mute");
+    EXPECT_EQ(admin::toJson(admin::clientInfo(pool.client(0), 0))["watchdog"], "mute");
+    pool.client(0).setWatchdogMuted(false);
 
     auto peers = server.peers();
     ASSERT_EQ(peers.size(), 1u);
@@ -193,6 +282,7 @@ TEST_F(AdminConnections_test, ClientAndServerLegs) {
     EXPECT_EQ(serverSide.localAddress, "127.0.0.1:15911");
     EXPECT_EQ(serverSide.peerAddress, info.localAddress);
     EXPECT_EQ(serverSide.peerOriginHost, "client.example.com");
+    EXPECT_EQ(serverSide.watchdog, "answer");
 
     // the peer goes away: the client connection is reconnecting, the configured
     // peer address is still shown, the remote identity is not

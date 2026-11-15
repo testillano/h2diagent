@@ -9,6 +9,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <boost/asio.hpp>
 #include <csignal>
 #include <cstring>
+#include <ert/h2diagent/Admin.hpp>
 #include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/h2diagent/helpers.hpp>
@@ -115,7 +116,11 @@ void usage(const char* name) {
         << "                                  (gateway AVP mapping, e.g. {\"Supported-Vendor-Id\": 10415}).\n"
         << "                                  The AVPs built from the options win: an equal one is\n"
         << "                                  ignored, a different one is a start-up error.\n"
-        << "  --cea <file>                    Same, for the CEA answered to the peers (server leg).\n\n"
+        << "  --cea <file>                    Same, for the CEA answered to the peers (server leg).\n"
+        << "  --cea-result-code <code|none>   Result-Code of the CEA answered (server leg; default 2001).\n"
+        << "                                  Another code rejects the capabilities exchange (e.g. 5010)\n"
+        << "                                  and closes; 'none' answers no CEA. Negative tests (also\n"
+        << "                                  PUT /admin/v1/configuration?ceaResultCode=).\n\n"
         << "  [-V|--version]                  Program version\n"
         << "  [-h|--help]                     This help\n"
         << std::endl;
@@ -179,6 +184,7 @@ int main(int argc, char* argv[]) {
         {"decode-as", required_argument, nullptr, 0},
         {"cer", required_argument, nullptr, 0},
         {"cea", required_argument, nullptr, 0},
+        {"cea-result-code", required_argument, nullptr, 0},
         {"version", no_argument, nullptr, 'V'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0},
@@ -268,6 +274,11 @@ int main(int argc, char* argv[]) {
                         return 1;
                     }
                     config.decodeAs.push_back(entry);
+                } else if (name == "cea-result-code") {
+                    if (!ert::h2diagent::admin::parseCeaResultCode(optarg, config.ceaResultCode)) {
+                        std::cerr << "Invalid --cea-result-code '" << optarg << "' (1000..5999 or none)" << std::endl;
+                        return 1;
+                    }
                 } else if (name == "cer" || name == "cea") {
                     std::ifstream ifs(optarg);
                     nlohmann::json j;
@@ -360,6 +371,9 @@ int main(int argc, char* argv[]) {
     std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << std::endl;
     std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << std::endl;
     std::cout << "Admin port: " << (config.adminPort > 0 ? std::to_string(config.adminPort) : "disabled") << std::endl;
+    if (config.ceaResultCode != 2001)
+        std::cout << "CEA Result-Code: " << (config.ceaResultCode < 0 ? "none" : std::to_string(config.ceaResultCode))
+                  << std::endl;
     if (!config.cerFile.empty()) std::cout << "CER extra AVPs: " << config.cerFile << std::endl;
     if (!config.ceaFile.empty()) std::cout << "CEA extra AVPs: " << config.ceaFile << std::endl;
     std::cout << "Prometheus port: " << (config.metricsEnabled ? std::to_string(config.prometheusPort) : "disabled")

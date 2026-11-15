@@ -178,6 +178,42 @@ trace() {
   fi
 }
 
+# peer_fault <client|server> <index> <fault>: base protocol fault injection.
+peer_fault() {
+  if [ "$1" = "-h" -o "$1" = "--help" -o -z "$3" ]
+  then
+    echo "Usage: peer_fault [-h|--help] <client|server> <index> <--mute|--answer|--close|--dpr [cause]|--connect>; Base protocol fault on a connection ($(admin_url)/peers/<leg>/<index>)."
+    echo "       --mute / --answer  Stops / restores the watchdog (DWRs not answered, none sent)."
+    echo "       --close            Abrupt close, no DPR (a client connection reconnects with its backoff)."
+    echo "       --dpr [cause]      Orderly disconnect: REBOOTING (default), BUSY, DO_NOT_WANT_TO_TALK_TO_YOU"
+    echo "                          (a client connection does not reconnect until --connect)."
+    echo "       --connect          Client connection: connects again (after a --dpr)."
+    echo "       <index> as listed by 'peers'."
+    return 0
+  fi
+  local leg="$1" index="$2" q=
+  case "$3" in
+    --mute) q="watchdog=mute" ;;
+    --answer) q="watchdog=answer" ;;
+    --close) q="action=close" ;;
+    --dpr) q="action=dpr"; [ -n "$4" ] && q+="&cause=$4" ;;
+    --connect) q="action=connect" ;;
+    *) echo "Unknown fault '$3' (see peer_fault -h)" >&2; return 1 ;;
+  esac
+  do_curl -XPUT "$(admin_url)/peers/${leg}/${index}?${q}"
+}
+
+# cea_result_code <code|none>: Result-Code of the CEA answered to the next peers.
+cea_result_code() {
+  if [ "$1" = "-h" -o "$1" = "--help" -o -z "$1" ]
+  then
+    echo "Usage: cea_result_code [-h|--help] <code|none>; Result-Code of the CEA answered to the peers connecting from now on ($(admin_url)/configuration)."
+    echo "       2001 accepts; another code (e.g. 5010) rejects the capabilities exchange and closes; 'none' answers nothing."
+    return 0
+  fi
+  do_curl -XPUT "$(admin_url)/configuration?ceaResultCode=$1"
+}
+
 # pretty / raw [jq expression]: last admin answer, beautified / compact.
 pretty() {
   if [ "$1" = "-h" -o "$1" = "--help" ]
@@ -664,7 +700,7 @@ help() {
   export -f admin_url metrics_url do_curl
   echo
   echo "=== Functions ==="
-  for f in health peers wait_peers configuration trace pretty raw snapshot metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
+  for f in health peers wait_peers configuration trace peer_fault cea_result_code pretty raw snapshot metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
   echo
 }
 

@@ -708,6 +708,10 @@ General:
                                   The AVPs built from the options win: an equal one is
                                   ignored, a different one is a start-up error.
   --cea <file>                    Same, for the CEA answered to the peers (server leg).
+  --cea-result-code <code|none>   Result-Code of the CEA answered (server leg; default 2001).
+                                  Another code rejects the capabilities exchange (e.g. 5010)
+                                  and closes; 'none' answers no CEA. Negative tests (also
+                                  PUT /admin/v1/configuration?ceaResultCode=).
 
   [-V|--version]                  Program version
   [-h|--help]                     This help
@@ -753,8 +757,33 @@ configured peer address and no peer identity. A server peer which closes leaves
 the list.
 
 The helpers (`tools/helpers.bash`) wrap them: `health`, `peers` (with leg /
-state filters), `wait_peers`, `configuration`, `trace [level]`, plus `pretty` /
+state filters), `wait_peers`, `configuration`, `trace [level]`, the [fault injection](#base-protocol-fault-injection)
+ones (`peer_fault`, `cea_result_code`), plus `pretty` /
 `raw` over the last answer and `snapshot` (see [helper functions](#helper-functions-toolshelpersbash)).
+
+## Base protocol fault injection
+
+To test how the SUT handles the Diameter base protocol (RFC 6733, RFC 3539)
+beyond killing the gateway pod, the admin interface acts on a connection
+(`<leg>/<index>` as listed by `GET /admin/v1/peers`):
+
+| Operation | Effect | Tests in the SUT |
+|---|---|---|
+| `PUT /admin/v1/peers/<leg>/<index>?watchdog=mute` (`=answer` restores) | the DWRs received are not answered and none is sent | watchdog failure detection, failover, DWR retries |
+| `PUT /admin/v1/peers/<leg>/<index>?action=close` | abrupt close, no DPR; a client connection reconnects with its backoff | reconnection, pending transactions |
+| `PUT /admin/v1/peers/<leg>/<index>?action=dpr[&cause=REBOOTING\|BUSY\|DO_NOT_WANT_TO_TALK_TO_YOU]` | orderly disconnect (DPR / DPA); a client connection does **not** reconnect until `action=connect` | DPR handling, reconnection policy per cause |
+| `PUT /admin/v1/peers/client/<index>?action=connect` | connects again (after a `dpr`) | |
+| `--cea-result-code <code\|none>`, `PUT /admin/v1/configuration?ceaResultCode=<code\|none>` | the CEA answered to the peers connecting from then on: `2001` accepts, another code (e.g. `5010` DIAMETER_NO_COMMON_APPLICATION) rejects and closes, `none` answers nothing | capabilities negotiation failure handling |
+
+`GET /admin/v1/peers` shows the `watchdog` (`answer` / `mute`) of every
+connection; `GET /admin/v1/configuration` the current `ceaResultCode`. A CEA
+received with a rejecting Result-Code (not `2xxx`) does not open the peer: the
+gateway closes and, on the client leg, retries with its backoff; meanwhile the
+director gets `502` for its requests. Application answers (delays, drops, error
+codes) stay in the h2agent provisions.
+
+The helpers wrap them: `peer_fault <leg> <index> --mute|--answer|--close|--dpr [cause]|--connect`
+and `cea_result_code <code|none>`.
 
 ## Capabilities exchange: extra CER / CEA AVPs (`--cer`, `--cea`)
 
@@ -1182,6 +1211,8 @@ peers --leg client --state reconnecting   # filtered (also --count)
 wait_peers [--leg client] [--count 2] [30]  # blocks until that many connections are open
 configuration            # running configuration
 trace [level]            # gets / sets the tracing (log) level
+peer_fault client 0 --mute               # fault injection: --mute|--answer|--close|--dpr [cause]|--connect
+cea_result_code 5010     # CEA answered to the next peers (2001, a rejection code, none)
 pretty / raw [jq expr]   # last admin answer, beautified / compact (e.g. pretty '.connections[0]')
 snapshot [dir]           # health, peers, configuration, level and metrics into a directory
 

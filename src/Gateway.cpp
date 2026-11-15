@@ -251,6 +251,9 @@ void Gateway::start() {
         if (appId != 0) peerConfig.applicationIds.push_back(appId);
     }
 
+    // --cea-result-code: the CEA outcome (server leg), also set by PUT configuration
+    peerConfig.ceaResultCode = config_.ceaResultCode;
+
     // --cer / --cea: extra capabilities AVPs (fail fast before any service starts)
     const helpers::CapabilitiesBuilt built{config_.originHost, config_.originRealm, config_.productName,
                                            peerConfig.vendorId};
@@ -513,6 +516,60 @@ std::vector<admin::ConnectionInfo> Gateway::connections() const {
     return result;
 }
 
+admin::Response Gateway::peerOperation(const admin::PeerOperation& op) {
+    const std::string name = op.leg + "/" + std::to_string(op.index);
+    std::string done;
+    if (op.leg == "client") {
+        if (!diameterClientPool_ || op.index >= static_cast<int>(diameterClientPool_->size()))
+            return admin::result(404, false, "no connection " + name);
+        auto& client = diameterClientPool_->client(op.index);
+        if (!op.watchdog.empty()) {
+            client.setWatchdogMuted(op.watchdog == "mute");
+            done = "watchdog " + op.watchdog;
+        } else if (op.action == "close") {
+            client.dropConnection();  // reconnects with its backoff
+            done = "closed (reconnecting)";
+        } else if (op.action == "dpr") {
+            client.disconnect(op.cause);  // no reconnection until action=connect
+            done = "DPR sent (cause " + std::to_string(op.cause) + "), no reconnection until action=connect";
+        } else {  // connect
+            client.setReconnectEnabled(true);
+            client.connect(config_.diameterPeerHost, config_.diameterPeerPort);
+            done = "connecting";
+        }
+    } else {
+        std::shared_ptr<diametercomm::Peer> peer;
+        if (diameterServer_) {
+            const auto peers = diameterServer_->peers();
+            if (op.index < static_cast<int>(peers.size())) peer = peers[op.index];
+        }
+        if (!peer) return admin::result(404, false, "no connection " + name);
+        if (!op.watchdog.empty()) {
+            peer->setWatchdogMuted(op.watchdog == "mute");
+            done = "watchdog " + op.watchdog;
+        } else if (op.action == "close") {
+            peer->close();
+            done = "closed";
+        } else {  // dpr
+            peer->disconnect(op.cause);
+            done = "DPR sent (cause " + std::to_string(op.cause) + ")";
+        }
+    }
+    LOGWARNING(ert::tracing::Logger::warning(
+        ert::tracing::Logger::asString("Fault injection on %s: %s", name.c_str(), done.c_str()), ERT_FILE_LOCATION));
+    return admin::result(200, true, name + ": " + done);
+}
+
+admin::Response Gateway::setCeaResultCode(int32_t code) {
+    if (!diameterServer_) return admin::result(404, false, "no Diameter server leg (--diameter-port 0)");
+    diameterServer_->setCeaResultCode(code);
+    config_.ceaResultCode = code;  // GET configuration
+    const std::string text = code < 0 ? "none" : std::to_string(code);
+    LOGWARNING(ert::tracing::Logger::warning(
+        ert::tracing::Logger::asString("CEA Result-Code for the next peers: %s", text.c_str()), ERT_FILE_LOCATION));
+    return admin::result(200, true, "ceaResultCode: " + text + " (peers connecting from now on)");
+}
+
 void Gateway::refreshConnectionGauges() {
     if (!diameterClientPool_ || !client_connection_state_gauge_family_ptr_) return;
     const std::string peer = config_.diameterPeerHost + ":" + std::to_string(config_.diameterPeerPort);
@@ -547,7 +604,9 @@ void Gateway::startAdminServer() {
                 if (len > 0) return;
                 const admin::Response answer = admin::handle(
                     *method, *path, *query, [this]() { return connections(); },
-                    [this]() { return admin::configurationJson(config_, loadedDictionaries_); });
+                    [this]() { return admin::configurationJson(config_, loadedDictionaries_); },
+                    [this](const admin::PeerOperation& op) { return peerOperation(op); },
+                    [this](int32_t code) { return setCeaResultCode(code); });
                 nghttp2::asio_http2::header_map h;
                 h.emplace("content-type", nghttp2::asio_http2::header_value{answer.contentType, false});
                 res.write_head(answer.status, h);
