@@ -161,6 +161,9 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
                                {"timeoutMs", c.diameterTimeoutMs},
                                {"dictionaries", dicts},
                                {"decodeAs", decodeAs}};
+    // extra capabilities AVPs (--cer / --cea), as given
+    if (!c.cerAvps.is_null()) diameter["cer"] = {{"file", c.cerFile}, {"avps", c.cerAvps}};
+    if (!c.ceaAvps.is_null()) diameter["cea"] = {{"file", c.ceaFile}, {"avps", c.ceaAvps}};
     if (!c.diameterPeerHost.empty()) {
         diameter["peer"] = {{"host", c.diameterPeerHost},
                             {"port", c.diameterPeerPort},

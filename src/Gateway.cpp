@@ -15,6 +15,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercodec/codec/Avp.hpp>
 #include <ert/diametercodec/codec/Message.hpp>
 #include <ert/h2diagent/Admin.hpp>
+#include <ert/h2diagent/CapabilitiesAvps.hpp>
 #include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/tracing/Logger.hpp>
@@ -249,6 +250,32 @@ void Gateway::start() {
     for (const auto& [appId, dict] : dictionaries_) {
         if (appId != 0) peerConfig.applicationIds.push_back(appId);
     }
+
+    // --cer / --cea: extra capabilities AVPs (fail fast before any service starts)
+    const helpers::CapabilitiesBuilt built{config_.originHost, config_.originRealm, config_.productName,
+                                           peerConfig.vendorId};
+    const auto extraAvps = [&](const nlohmann::json& extra, const std::string& option, const std::string& file,
+                               std::vector<uint8_t>& out) {
+        if (extra.is_null()) return;
+        if (dictionaries_.empty())
+            throw std::runtime_error("Invalid " + option + ": no dictionary loaded to encode it");
+        std::vector<std::string> dropped;
+        std::string err;
+        if (!helpers::encodeCapabilitiesAvps(extra, dictionaries_.begin()->second, built, out, dropped, err))
+            throw std::runtime_error("Invalid " + option + " '" + file + "': " + err);
+        for (const auto& name : dropped) {
+            LOGWARNING(ert::tracing::Logger::warning(
+                ert::tracing::Logger::asString("%s: AVP '%s' equal to the built one, ignored", option.c_str(),
+                                               name.c_str()),
+                ERT_FILE_LOCATION));
+        }
+        LOGWARNING(
+            ert::tracing::Logger::warning(ert::tracing::Logger::asString("%s: %zu bytes of extra AVPs from '%s'",
+                                                                         option.c_str(), out.size(), file.c_str()),
+                                          ERT_FILE_LOCATION));
+    };
+    extraAvps(config_.cerAvps, "--cer", config_.cerFile, peerConfig.extraCerAvps);
+    extraAvps(config_.ceaAvps, "--cea", config_.ceaFile, peerConfig.extraCeaAvps);
 
     if (config_.diameterPort > 0) {
         // TLS/TCP for the inbound Diameter server: enabled when key+crt provided

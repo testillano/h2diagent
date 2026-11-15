@@ -44,7 +44,7 @@ ARG nghttp2_ver=1.64.0
 ARG nghttp2_asio_ver=main
 ARG ert_http2comm_ver=v2.4.1
 ARG ert_diametercodec_ver=v1.4.0
-ARG ert_diametercomm_ver=v1.4.0
+ARG ert_diametercomm_ver=v1.5.0
 ARG google_test_ver=v1.11.0
 
 # ---------------------------------------------------------------------------
@@ -285,8 +285,9 @@ FROM ubuntu:24.04 AS runtime
 
 ARG build_type=Release
 
+# curl: probes (admin health, HTTP/2 prior knowledge) and helpers; jq: helpers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl3 libsctp1 curl \
+    libssl3 libsctp1 curl jq \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Binary in the PATH, same place as the downstream images

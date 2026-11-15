@@ -131,6 +131,14 @@ TEST(Admin, ConfigurationHasNoSecrets) {
     EXPECT_EQ(j["adminPort"], 8079);
     EXPECT_EQ(j["metrics"]["prometheusPort"], 8085);
 
+    EXPECT_FALSE(j["diameter"].contains("cer"));  // no --cer / --cea
+    c.cerFile = "/config/cer.json";
+    c.cerAvps = {{"Supported-Vendor-Id", 10415}};
+    const auto withCer = admin::configurationJson(c, {});
+    EXPECT_EQ(withCer["diameter"]["cer"]["file"], "/config/cer.json");
+    EXPECT_EQ(withCer["diameter"]["cer"]["avps"]["Supported-Vendor-Id"], 10415);
+    EXPECT_FALSE(withCer["diameter"].contains("cea"));
+
     c.diameterPeerHost.clear();
     EXPECT_FALSE(admin::configurationJson(c, {})["diameter"].contains("peer"));  // no client leg
 }

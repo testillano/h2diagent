@@ -20,6 +20,11 @@ spec:
         - name: {{ include "h2diagent.name" . }}-dictionaries
           configMap:
             name: {{ include "h2diagent.name" . }}-dictionaries
+        {{- if or .Values.diameter.cer .Values.diameter.cea }}
+        - name: {{ include "h2diagent.name" . }}-capabilities
+          configMap:
+            name: {{ include "h2diagent.name" . }}-capabilities
+        {{- end }}
         {{- if .Values.utilsMountPath }}
         - name: {{ include "h2diagent.name" . }}-h2diagent-helpers
           configMap:
@@ -42,6 +47,10 @@ spec:
           volumeMounts:
             - name: {{ include "h2diagent.name" . }}-dictionaries
               mountPath: /opt/stacks
+            {{- if or .Values.diameter.cer .Values.diameter.cea }}
+            - name: {{ include "h2diagent.name" . }}-capabilities
+              mountPath: /opt/capabilities
+            {{- end }}
             {{- if .Values.utilsMountPath }}
             - name: {{ include "h2diagent.name" . }}-h2diagent-helpers
               mountPath: {{ .Values.utilsMountPath }}
@@ -109,6 +118,14 @@ spec:
             - {{ .Values.diameter.serverTransport | quote }}
             - "--diameter-client-transport"
             - {{ .Values.diameter.clientTransport | quote }}
+            {{- if .Values.diameter.cer }}
+            - "--cer"
+            - "/opt/capabilities/cer.json"
+            {{- end }}
+            {{- if .Values.diameter.cea }}
+            - "--cea"
+            - "/opt/capabilities/cea.json"
+            {{- end }}
             {{- range $avp, $form := .Values.diameter.decodeAs }}
             - "--decode-as"
             - {{ printf "%s=%s" $avp $form | quote }}

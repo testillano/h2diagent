@@ -36,10 +36,16 @@ H2DIAHLP_ADMIN_PORT=${H2DIAHLP_ADMIN_PORT:-8079}
 H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME:-http}
 H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR:-localhost}
 export PNAME H2DIAHLP_METRICS_PORT H2DIAHLP_ADMIN_PORT H2DIAHLP_SCHEME H2DIAHLP_SERVER_ADDR
+# Last admin answer (for 'pretty' / 'raw'), per user and process name.
+_H2DIA_CURL_OUT=${_H2DIA_CURL_OUT:-${TMPDIR:-/tmp}/.h2diagent-helpers-$(id -un)-${PNAME}.out}
+export _H2DIA_CURL_OUT
 # NOTE: the Prometheus endpoint is plain HTTP/1 (`curl -s`) and the admin one is
 # HTTP/2 prior knowledge (`curl -s --http2-prior-knowledge`), both inline. We
 # deliberately do NOT define a global CURL variable here: exporting one would leak
 # into a shell that also sources the h2agent helpers, silently changing their calls.
+# Same reason for the h2agent-like names (health, configuration, trace, pretty,
+# raw, snapshot, do_curl): source the helpers of one process per shell (each
+# container sources its own).
 
 #############
 # FUNCTIONS #
@@ -59,36 +65,171 @@ metrics_url() {
   echo "${H2DIAHLP_SCHEME}://${H2DIAHLP_SERVER_ADDR}:${port}/metrics"
 }
 
-# -----------------------------------------------------------------------------
-# PUBLIC
-
-# health: admin health (200 while the process serves).
-health() {
-  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: health [-h|--help]; Gateway health ($(admin_url)/health)." && return 0
-  curl -s --http2-prior-knowledge "$(admin_url)/health"; echo
+# do_curl <curl args>: admin request (HTTP/2 prior knowledge), as the h2agent helpers do:
+# shows the command, prints the answer and keeps it for 'pretty' / 'raw'.
+do_curl() {
+  echo
+  echo "[curl -s --http2-prior-knowledge $*]"
+  echo
+  curl -s --http2-prior-knowledge "$@" | tee "${_H2DIA_CURL_OUT}"
+  local rc=${PIPESTATUS[0]}
+  echo
+  return ${rc}
 }
 
-# peers: the Diameter connections (client pool and server leg) with their state.
+# -----------------------------------------------------------------------------
+# PUBLIC (admin interface)
+
+# health [--quiet]: admin health (200 while the process serves).
+health() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: health [-h|--help]; Checks the gateway health ($(admin_url)/health)."
+    echo "              [--quiet]; No output, just the exit status (0=healthy, 1=unreachable/unhealthy)."
+    return 0
+  fi
+  if [ "$1" = "--quiet" ]
+  then
+    curl -sf --http2-prior-knowledge -o /dev/null "$(admin_url)/health" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  do_curl "$(admin_url)/health"
+}
+
+# peers [--leg client|server] [--state <state>]: the Diameter connections.
 peers() {
-  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: peers [-h|--help]; Diameter connections: leg, state, addresses, peer identity ($(admin_url)/peers)." && return 0
-  curl -s --http2-prior-knowledge "$(admin_url)/peers"; echo
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: peers [-h|--help]; Diameter connections: leg, state, addresses, peer identity ($(admin_url)/peers)."
+    echo "             [--leg client|server] [--state closed|reconnecting|waitCEA|waitCER|open|closing];"
+    echo "             Only the connections of that leg and/or state (needs jq)."
+    echo "             [--count]; Just the number of (selected) connections (needs jq)."
+    return 0
+  fi
+  local leg= state= count=
+  while [ -n "$1" ]; do
+    case "$1" in
+      --leg) leg="$2"; shift 2 ;;
+      --state) state="$2"; shift 2 ;;
+      --count) count=true; shift ;;
+      *) echo "Unknown option '$1' (see peers -h)" >&2; return 1 ;;
+    esac
+  done
+  if [ -z "${leg}${state}${count}" ]; then do_curl "$(admin_url)/peers"; return $?; fi
+  local filter='.connections'
+  [ -n "${leg}" ] && filter+=" | map(select(.leg == \"${leg}\"))"
+  [ -n "${state}" ] && filter+=" | map(select(.state == \"${state}\"))"
+  [ -n "${count}" ] && filter+=" | length"
+  curl -s --http2-prior-knowledge "$(admin_url)/peers" | tee "${_H2DIA_CURL_OUT}" | jq "${filter}"
+}
+
+# wait_peers [--leg client|server] [--count <n>] [timeout seconds]: blocks until open.
+wait_peers() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: wait_peers [-h|--help] [--leg client|server] [--count <n>] [timeout seconds, 30 by default];"
+    echo "                  Waits until at least <n> (1 by default) connections are open (needs jq)."
+    echo "                  Returns 0 when reached, 1 on timeout."
+    return 0
+  fi
+  local leg= n=1 timeout=30
+  while [ -n "$1" ]; do
+    case "$1" in
+      --leg) leg="$2"; shift 2 ;;
+      --count) n="$2"; shift 2 ;;
+      *) timeout="$1"; shift ;;
+    esac
+  done
+  local filter='.connections | map(select(.state == "open"))'
+  [ -n "${leg}" ] && filter+=" | map(select(.leg == \"${leg}\"))"
+  filter+=" | length"
+  local deadline=$(( $(date +%s) + timeout )) open=0
+  while [ $(date +%s) -le ${deadline} ]; do
+    open=$(curl -s --http2-prior-knowledge "$(admin_url)/peers" 2>/dev/null | jq "${filter}" 2>/dev/null)
+    [ "${open:-0}" -ge "${n}" ] && echo "${open} open connection(s)" && return 0
+    sleep 0.5
+  done
+  echo "Timeout: ${open:-0} open connection(s), ${n} expected" >&2
+  return 1
 }
 
 # configuration: running options of the gateway.
 configuration() {
   [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: configuration [-h|--help]; Gateway running configuration ($(admin_url)/configuration)." && return 0
-  curl -s --http2-prior-knowledge "$(admin_url)/configuration"; echo
+  do_curl "$(admin_url)/configuration"
 }
 
-# logging [level]: gets the log level, or sets it.
-logging() {
-  [ "$1" = "-h" -o "$1" = "--help" ] && echo "Usage: logging [-h|--help] [Debug|Informational|Notice|Warning|Error|Critical|Alert|Emergency]; Gets/sets the gateway log level ($(admin_url)/logging)." && return 0
-  if [ -n "$1" ]; then
-    curl -s --http2-prior-knowledge -XPUT "$(admin_url)/logging?level=$1"; echo
+# trace [level]: gets the log level, or sets it (as the h2agent helper).
+trace() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: trace [-h|--help] [level: Debug|Informational|Notice|Warning|Error|Critical|Alert|Emergency]; Gets/sets the gateway tracing level ($(admin_url)/logging)."
+    return 0
+  fi
+  if [ -n "$1" ]
+  then
+    echo -n "Level selected: $1"
+    local recommended_level="Warning"
+    [ "$1" != "${recommended_level}" ] && echo -n " (recommended '${recommended_level}' for normal operation)."
+    echo
+    do_curl -XPUT "$(admin_url)/logging?level=$1"
   else
-    curl -s --http2-prior-knowledge "$(admin_url)/logging"; echo
+    do_curl "$(admin_url)/logging"
   fi
 }
+
+# pretty / raw [jq expression]: last admin answer, beautified / compact.
+pretty() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: pretty [-h|--help]; Beautifies json content for last operation response."
+    echo "              [jq expression, '.' by default]; jq filter over previous content."
+    echo "              Example filter: peers && pretty '.connections[] | select(.state != \"open\")'"
+    return 0
+  fi
+  jq "${1:-.}" "${_H2DIA_CURL_OUT}"
+}
+
+raw() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: raw [-h|--help]; Outputs raw json content for last operation response."
+    echo "           [jq expression, '.' by default]; jq filter over previous content."
+    return 0
+  fi
+  jq -c "${1:-.}" "${_H2DIA_CURL_OUT}"
+}
+
+# snapshot [dir]: admin state and metrics into a directory.
+snapshot() {
+  if [ "$1" = "-h" -o "$1" = "--help" ]
+  then
+    echo "Usage: snapshot [-h|--help]; Creates a snapshot directory with the gateway state, configuration and metrics."
+    echo "                [target dir]; Directory where information is stored (per-user '${TMPDIR:-/tmp}/snapshots-<user>-${PNAME}/last' by default)."
+    return 0
+  fi
+  local base="${SNAPSHOTS_DIR:-${TMPDIR:-/tmp}/snapshots-$(id -un)-${PNAME}}"
+  local dir=${1:-"${base}/$(date +'%y%m%d.%H%M%S')"}
+  mkdir -p "${dir}" || return 1
+  if [ -n "$1" ]
+  then
+    [ -n "$(ls -A "${dir}")" ] && echo "Target directory '${dir}' is not empty !" && return 1
+  else
+    local last="${base}/last"
+    rm -f "${last}" && ln -s "$(basename "${dir}")" "${last}"
+  fi
+  local a=(--http2-prior-knowledge -s)
+  curl "${a[@]}" "$(admin_url)/health" > "${dir}/health.json"
+  curl "${a[@]}" "$(admin_url)/peers" > "${dir}/peers.json"
+  curl "${a[@]}" "$(admin_url)/configuration" > "${dir}/configuration.json"
+  curl "${a[@]}" "$(admin_url)/logging" > "${dir}/logging.txt"
+  curl -s "$(metrics_url)" > "${dir}/metrics.txt" 2>/dev/null
+  echo "Snapshot stored at ${dir}:"
+  ls -1 "${dir}"
+}
+
+# -----------------------------------------------------------------------------
+# PUBLIC (metrics)
 
 # metrics [port]: raw Prometheus metrics scraped from h2diagent.
 metrics() {
@@ -520,10 +661,10 @@ help() {
   echo "=== Internal Functions And Variables ==="
   echo "admin_url: $(admin_url) (H2DIAHLP_ADMIN_PORT=${H2DIAHLP_ADMIN_PORT})"
   echo "metrics_url: $(metrics_url) (H2DIAHLP_METRICS_PORT=${H2DIAHLP_METRICS_PORT}; H2DIAHLP_SCHEME=${H2DIAHLP_SCHEME}; H2DIAHLP_SERVER_ADDR=${H2DIAHLP_SERVER_ADDR})"
-  export -f admin_url metrics_url
+  export -f admin_url metrics_url do_curl
   echo
   echo "=== Functions ==="
-  for f in health peers configuration logging metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
+  for f in health peers wait_peers configuration trace pretty raw snapshot metrics metrics_summary; do ${f} -h | head -n 1; export -f ${f} ; done
   echo
 }
 
@@ -536,9 +677,10 @@ help() {
 # the sourcing shell -- breaking scripts that source this as a library) while
 # giving no real protection: a function needing a missing tool fails on use
 # anyway. So we just warn (to stderr) and keep the library sourceable.
-# h2diagent uses curl (scrapes) and awk (metrics_summary parsing/formatting);
-# it does NOT use jq/python3. Ubiquitous coreutils (sed/grep/sort/date) assumed.
-for _dep in curl awk; do
+# h2diagent uses curl (admin calls and scrapes), awk (metrics_summary parsing and
+# formatting) and jq (pretty, raw and the peers filters). Ubiquitous coreutils
+# (sed/grep/sort/date) assumed.
+for _dep in curl awk jq; do
   type "${_dep}" &>/dev/null || echo "WARNING: missing dependency '${_dep}' -- some helper functions will fail until it is installed." >&2
 done
 unset _dep

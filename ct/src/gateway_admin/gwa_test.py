@@ -104,3 +104,23 @@ def test_006_connection_state_gauge(client_gw):
     assert len(samples) == 1, samples
     assert 'connection="0"' in samples[0]
     assert float(samples[0].rsplit(" ", 1)[1]) == 1  # open
+
+
+def test_007_capabilities_avps(server_gw, client_gw):
+    # --cer (client) / --cea (server) from the CT chart values: shown as given, and
+    # the capabilities exchange carrying them still opens the connection (the
+    # bytes on the wire are checked by the diametercomm and h2diagent UT)
+    status, body = client_gw.get("/admin/v1/configuration")
+    assert status == 200
+    assert body["diameter"]["cer"]["file"] == "/opt/capabilities/cer.json"
+    assert body["diameter"]["cer"]["avps"] == {"Supported-Vendor-Id": [10415], "Firmware-Revision": 1,
+                                               "Product-Name": "h2diagent"}
+    assert "cea" not in body["diameter"]
+
+    status, body = server_gw.get("/admin/v1/configuration")
+    assert status == 200
+    assert body["diameter"]["cea"]["avps"] == {"Supported-Vendor-Id": [10415], "Firmware-Revision": 2}
+
+    assert open_connections(client_gw, "client")
+    assert open_connections(server_gw, "server")
+

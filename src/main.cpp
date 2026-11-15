@@ -13,6 +13,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/h2diagent/helpers.hpp>
 #include <ert/tracing/Logger.hpp>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -110,6 +111,11 @@ void usage(const char* name) {
         << "                                  {\"hex\": ...} when its bytes do not fit. Forms: text|ipv4|\n"
         << "                                  ipv6|ipv6Prefix|msTimeZone|uli (the readable forms accepted\n"
         << "                                  outbound). Repeatable. Default: hex for every OctetString.\n\n"
+        << "  --cer <file>                    Json file with extra AVPs for the CER sent to the peer\n"
+        << "                                  (gateway AVP mapping, e.g. {\"Supported-Vendor-Id\": 10415}).\n"
+        << "                                  The AVPs built from the options win: an equal one is\n"
+        << "                                  ignored, a different one is a start-up error.\n"
+        << "  --cea <file>                    Same, for the CEA answered to the peers (server leg).\n\n"
         << "  [-V|--version]                  Program version\n"
         << "  [-h|--help]                     This help\n"
         << std::endl;
@@ -171,6 +177,8 @@ int main(int argc, char* argv[]) {
         {"disable-metrics", no_argument, nullptr, 0},
         {"metrics-additional-label", required_argument, nullptr, 0},
         {"decode-as", required_argument, nullptr, 0},
+        {"cer", required_argument, nullptr, 0},
+        {"cea", required_argument, nullptr, 0},
         {"version", no_argument, nullptr, 'V'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0},
@@ -260,6 +268,23 @@ int main(int argc, char* argv[]) {
                         return 1;
                     }
                     config.decodeAs.push_back(entry);
+                } else if (name == "cer" || name == "cea") {
+                    std::ifstream ifs(optarg);
+                    nlohmann::json j;
+                    try {
+                        if (!ifs.is_open()) throw std::runtime_error("cannot read the file");
+                        j = nlohmann::json::parse(ifs);
+                    } catch (const std::exception& e) {
+                        std::cerr << "Invalid --" << name << " '" << optarg << "': " << e.what() << std::endl;
+                        return 1;
+                    }
+                    if (name == "cer") {
+                        config.cerFile = optarg;
+                        config.cerAvps = std::move(j);
+                    } else {
+                        config.ceaFile = optarg;
+                        config.ceaAvps = std::move(j);
+                    }
                 }
                 break;
             }
@@ -335,6 +360,8 @@ int main(int argc, char* argv[]) {
     std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << std::endl;
     std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << std::endl;
     std::cout << "Admin port: " << (config.adminPort > 0 ? std::to_string(config.adminPort) : "disabled") << std::endl;
+    if (!config.cerFile.empty()) std::cout << "CER extra AVPs: " << config.cerFile << std::endl;
+    if (!config.ceaFile.empty()) std::cout << "CEA extra AVPs: " << config.ceaFile << std::endl;
     std::cout << "Prometheus port: " << (config.metricsEnabled ? std::to_string(config.prometheusPort) : "disabled")
               << std::endl;
     std::cout << std::endl;

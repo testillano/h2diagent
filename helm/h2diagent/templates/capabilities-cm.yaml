@@ -1,0 +1,20 @@
+{{/*
+Extra CER / CEA AVPs (--cer / --cea) from .Values.diameter.cer / .cea (AVP name
+-> value, gateway mapping), mounted into the h2diagent container at
+/opt/capabilities. Only rendered when one of them is given.
+*/}}
+{{- if or .Values.diameter.cer .Values.diameter.cea }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "h2diagent.name" . }}-capabilities
+  labels:
+    {{- include "h2diagent.labels" . | nindent 4 }}
+data:
+  {{- if .Values.diameter.cer }}
+  cer.json: {{ .Values.diameter.cer | toJson | quote }}
+  {{- end }}
+  {{- if .Values.diameter.cea }}
+  cea.json: {{ .Values.diameter.cea | toJson | quote }}
+  {{- end }}
+{{- end }}

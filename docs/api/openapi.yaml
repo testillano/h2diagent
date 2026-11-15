@@ -206,6 +206,16 @@ components:
           type: string
       required: [leg, index, transport, state]
 
+    CapabilitiesAvps:
+      type: object
+      description: Extra CER (client leg) / CEA (server leg) AVPs, present with --cer / --cea
+      properties:
+        file:
+          type: string
+        avps:
+          type: object
+          description: As given (AVP name -> value, gateway mapping)
+
     Configuration:
       type: object
       properties:
@@ -244,6 +254,10 @@ components:
               additionalProperties:
                 type: string
               description: AVP name -> readable form
+            cer:
+              $ref: '#/components/schemas/CapabilitiesAvps'
+            cea:
+              $ref: '#/components/schemas/CapabilitiesAvps'
             peer:
               type: object
               description: Present when the gateway dials a peer (client leg)

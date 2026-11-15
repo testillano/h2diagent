@@ -70,6 +70,16 @@ diameter:
   #     3GPP-User-Location-Info: uli
   #     Framed-IP-Address: ipv4
   decodeAs: {}
+  # Extra AVPs of the CER sent (client/both) and of the CEA answered (server/both)
+  # (--cer / --cea): AVP name -> value, in the gateway mapping. The AVPs built from
+  # the options (Origin-Host, Origin-Realm, Product-Name, Vendor-Id, Host-IP-Address,
+  # Auth-Application-Id per stack, Result-Code) win: an equal one is ignored, a
+  # different one stops the gateway at start. Empty (default): none. e.g.:
+  #   cer:
+  #     Supported-Vendor-Id: [10415]
+  #     Firmware-Revision: 1
+  cer: {}
+  cea: {}
   # tcp | sctp  (sctp is single-homing; CT uses tcp)
   serverTransport: tcp
   clientTransport: tcp

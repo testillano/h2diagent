@@ -693,6 +693,12 @@ General:
                                   ipv6|ipv6Prefix|msTimeZone|uli (the readable forms accepted
                                   outbound). Repeatable. Default: hex for every OctetString.
 
+  --cer <file>                    Json file with extra AVPs for the CER sent to the peer
+                                  (gateway AVP mapping, e.g. {"Supported-Vendor-Id": 10415}).
+                                  The AVPs built from the options win: an equal one is
+                                  ignored, a different one is a start-up error.
+  --cea <file>                    Same, for the CEA answered to the peers (server leg).
+
   [-V|--version]                  Program version
   [-h|--help]                     This help
 ```
@@ -736,8 +742,47 @@ reconnection armed), `waitCEA` / `waitCER` (capabilities exchange), `open` or
 configured peer address and no peer identity. A server peer which closes leaves
 the list.
 
-The helpers (`tools/helpers.bash`) wrap them: `health`, `peers`,
-`configuration`, `logging [level]`.
+The helpers (`tools/helpers.bash`) wrap them: `health`, `peers` (with leg /
+state filters), `wait_peers`, `configuration`, `trace [level]`, plus `pretty` /
+`raw` over the last answer and `snapshot` (see [helper functions](#helper-functions-toolshelpersbash)).
+
+## Capabilities exchange: extra CER / CEA AVPs (`--cer`, `--cea`)
+
+The gateway builds the CER it sends (client leg) and the CEA it answers (server
+leg) from its options: `Origin-Host`, `Origin-Realm`, `Host-IP-Address`,
+`Vendor-Id`, `Product-Name`, one `Auth-Application-Id` per loaded dictionary
+and, in the CEA, `Result-Code`. A peer which also expects other AVPs
+(`Supported-Vendor-Id`, `Firmware-Revision`, `Inband-Security-Id`,
+`Vendor-Specific-Application-Id`...) gets them from a json file, in the same
+AVP <-> json mapping as the traffic:
+
+```json
+{
+  "Supported-Vendor-Id": [10415, 5535],
+  "Firmware-Revision": 1,
+  "Vendor-Specific-Application-Id": {"Vendor-Id": 10415, "Auth-Application-Id": 16777238}
+}
+```
+
+```bash
+h2diagent ... --cer /config/cer.json --cea /config/cea.json
+```
+
+The file only **adds** AVPs, appended after the built ones; the options win:
+
+* an AVP equal to a built one (`Origin-Host`, `Origin-Realm`, `Product-Name`,
+  `Vendor-Id`) is ignored (with a warning);
+* a different value is a start-up error naming the AVP (exit code 1), never a
+  silent override: change the command line option instead;
+* `Host-IP-Address`, `Auth-Application-Id` and `Result-Code` cannot be given
+  (local address, loaded dictionaries, CEA outcome); neither can `_header`;
+* an unknown AVP, a value which does not encode, a file which is not a json
+  object: start-up error.
+
+`GET /admin/v1/configuration` shows them (`diameter.cer` / `diameter.cea`, as
+given). In the chart they are `diameter.cer` / `diameter.cea` values (mounted
+as files). To test a capabilities negotiation failure, change the options of
+one side (e.g. no common application).
 
 ## Diameter client connection pool (`--diameter-connections`)
 
@@ -1110,8 +1155,10 @@ h2diagent_diameter_client_connection_state{source="h2diagent",connection="0",pee
 
 ### Helper functions (`tools/helpers.bash`)
 
-`tools/helpers.bash` provides the [admin](#admin-interface) operations and
-shortcut functions over the Prometheus metrics endpoint (h2diagent only; the
+`tools/helpers.bash` provides functions over the [admin](#admin-interface)
+interface, in the style of the h2agent helpers (each admin call shows its curl
+command and keeps the answer for `pretty` / `raw`), and shortcut functions over
+the Prometheus metrics endpoint (h2diagent only; the
 h2agent sidecar has its own helpers). Source it natively, or use it inside the
 container (the helm chart mounts it and sources it into `~/.bashrc` for
 `kubectl exec`):
@@ -1119,10 +1166,14 @@ container (the helm chart mounts it and sources it into `~/.bashrc` for
 ```bash
 source tools/helpers.bash   # native (admin localhost:8079, metrics localhost:8085 by default)
 
-health                   # admin health
+health [--quiet]         # admin health (--quiet: only the exit status, a probe)
 peers                    # Diameter connections (leg, state, addresses, peer identity)
+peers --leg client --state reconnecting   # filtered (also --count)
+wait_peers [--leg client] [--count 2] [30]  # blocks until that many connections are open
 configuration            # running configuration
-logging [level]          # gets / sets the log level
+trace [level]            # gets / sets the tracing (log) level
+pretty / raw [jq expr]   # last admin answer, beautified / compact (e.g. pretty '.connections[0]')
+snapshot [dir]           # health, peers, configuration, level and metrics into a directory
 
 metrics [port]           # raw Prometheus metrics scraped from h2diagent
 metrics_summary          # Diameter client summary (result-codes, PASS(2001),

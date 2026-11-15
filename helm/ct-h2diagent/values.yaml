@@ -53,6 +53,10 @@ server:
       Framed-IP-Address: ipv4
       3GPP-User-Location-Info: uli
       3GPP-MS-TimeZone: msTimeZone
+    # CT of --cea (gateway_admin/gwa_test.py): extra AVPs in the CEA answered.
+    cea:
+      Supported-Vendor-Id: [10415]
+      Firmware-Revision: 2
   h2agent:
     enabled: true
     adminPort: 8074
@@ -73,6 +77,12 @@ client:
     serverPort: 0
     peerHost: server
     peerPort: 3868
+    # CT of --cer (gateway_admin/gwa_test.py): extra AVPs in the CER sent; the
+    # equal Product-Name is ignored (built AVPs win).
+    cer:
+      Supported-Vendor-Id: [10415]
+      Firmware-Revision: 1
+      Product-Name: h2diagent
   h2agent:
     enabled: true
     adminPort: 8074

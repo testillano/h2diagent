@@ -3,6 +3,7 @@ add_executable(unit-test
     diameterClientPool_test.cpp
     decodeAs_test.cpp
     admin_test.cpp
+    capabilitiesAvps_test.cpp
 )
 
 target_include_directories(unit-test

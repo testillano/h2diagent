@@ -33,6 +33,7 @@ Copyright (c) 2024 Eduardo Ramos
 #include <functional>
 #include <map>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
 #include <utility>
@@ -119,6 +120,13 @@ struct GatewayConfig {
     // Optional: readable form of OctetString AVPs decoded towards h2agent
     // (--decode-as <AVP>=<form>, see DecodeAs.hpp). Empty = hex, as always.
     std::vector<std::pair<std::string, std::string>> decodeAs;
+    // Optional: extra AVPs of the CER sent (client leg) / the CEA answered (server
+    // leg), from --cer / --cea json files (AVP name -> value, gateway mapping;
+    // see CapabilitiesAvps.hpp). null = none.
+    std::string cerFile;
+    std::string ceaFile;
+    nlohmann::json cerAvps;
+    nlohmann::json ceaAvps;
     int workers{0};  // 0 = nproc
 };
 
