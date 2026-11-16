@@ -4,6 +4,9 @@ add_executable(unit-test
     decodeAs_test.cpp
     admin_test.cpp
     capabilitiesAvps_test.cpp
+    gateway_test.cpp
+    # the Gateway itself, exercised end to end over loopback sockets (gateway_test)
+    ${CMAKE_SOURCE_DIR}/src/Gateway.cpp
 )
 
 target_include_directories(unit-test
@@ -23,6 +26,9 @@ add_library(ut_ert_diametercodec STATIC IMPORTED)
 add_library(ut_prometheus_cpp_pull STATIC IMPORTED)
 add_library(ut_prometheus_cpp_core STATIC IMPORTED)
 add_library(ut_boost_system STATIC IMPORTED)
+add_library(ut_ert_queuedispatcher STATIC IMPORTED)
+add_library(ut_nghttp2_asio STATIC IMPORTED)
+add_library(ut_nghttp2 STATIC IMPORTED)
 
 set_property(TARGET ut_ert_http2comm PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_http2comm.a)
 set_property(TARGET ut_ert_metrics PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_metrics.a)
@@ -32,6 +38,9 @@ set_property(TARGET ut_ert_diametercodec PROPERTY IMPORTED_LOCATION ${CMAKE_PREF
 set_property(TARGET ut_prometheus_cpp_pull PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/libprometheus-cpp-pull.a)
 set_property(TARGET ut_prometheus_cpp_core PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/libprometheus-cpp-core.a)
 set_property(TARGET ut_boost_system PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/libboost_system.a)
+set_property(TARGET ut_ert_queuedispatcher PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/ert/libert_queuedispatcher.a)
+set_property(TARGET ut_nghttp2_asio PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/libnghttp2_asio.a)
+set_property(TARGET ut_nghttp2 PROPERTY IMPORTED_LOCATION ${CMAKE_PREFIX_PATH}/lib/libnghttp2.a)
 
 target_link_libraries(unit-test
 PRIVATE
@@ -41,12 +50,15 @@ PRIVATE
     # diametercomm + its transitive deps (order matters for static linking)
     ut_ert_diametercomm
     ut_ert_diametercodec  # DecodeAs (dictionaries, DecodeOptions)
-    ut_ert_http2comm  # URLFunctions (helpers::inboundRequestPath)
+    ut_ert_http2comm  # URLFunctions (helpers::inboundRequestPath), Http2Client (gateway_test)
+    ut_ert_queuedispatcher
     ut_ert_metrics
     ut_ert_logger
     ut_prometheus_cpp_pull
     ut_prometheus_cpp_core
     z
+    ut_nghttp2_asio  # Gateway HTTP/2 client and servers (gateway_test)
+    ut_nghttp2
     ut_boost_system
     ssl
     crypto

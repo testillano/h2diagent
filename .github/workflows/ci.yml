@@ -5,6 +5,9 @@ on:
       tag:
         description: 'Docker images tag'
         required: true
+      hversion:
+        description: 'Helm charts version (empty: the Chart.yaml one)'
+        required: false
   push:
     branches:
     - master
@@ -226,6 +229,10 @@ jobs:
     needs: [doxygen, unit_tests_and_coverage]
     name: Deploy GitHub Pages
     runs-on: ubuntu-latest
+    # Only the master branch deploys: the 'github-pages' environment protection
+    # rejects tags and pull requests, and every rejected run leaves a failed
+    # deployment (shown by the Pages badge).
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     # Do not fail the whole pipeline if Pages hiccups:
     continue-on-error: true
     permissions:
@@ -268,3 +275,33 @@ jobs:
       name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
+
+  # Helm charts (h2diagent, ct-h2diagent) published to the testillano/helm
+  # repository (gh-pages, https://testillano.github.io/helm, alias erthelm), as
+  # h2agent does. The secret PERSONAL_ACCESS_TOKEN_REPO_FULL must give write
+  # access to testillano/helm.
+  helm_publish:
+    needs: push_docker_images_as_latest
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    -
+      # What ct/test.sh bundles before packaging: the stack dictionaries (the
+      # chart ConfigMap globs dictionaries/*.json) and the h2agent helpers for
+      # the sidecar (optional: without them the sidecar gets the port variables)
+      name: Bundle dictionaries and helpers into the chart
+      run: |
+        cp tools/stacks/*.json helm/h2diagent/dictionaries/
+        curl -sfL https://raw.githubusercontent.com/testillano/h2agent/master/tools/helpers.bash \
+          -o helm/h2diagent/helpers/native-helpers.bash || echo "h2agent helpers not bundled"
+        ls -l helm/h2diagent/dictionaries helm/h2diagent/helpers
+    -
+      name: Publish Helm charts
+      uses: stefanprodan/helm-gh-pages@master
+      with:
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN_REPO_FULL }}
+        charts_dir: helm
+        repository: helm
+        branch: gh-pages
+        chart_version: ${{ github.event.inputs.hversion }}
