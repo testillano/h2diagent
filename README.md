@@ -49,6 +49,36 @@ It translates Diameter messages to/from JSON over HTTP/2, allowing h2agent's ful
 3. SUT responds with Diameter answer
 4. h2diagent maps answer to JSON and returns HTTP/2 response to h2agent
 
+The request goes on the client leg (the connections the gateway opens with
+`--diameter-peer-host`). A gateway **without** client leg sends it on the
+[server leg](#outbound-requests-on-the-server-leg) instead.
+
+### Outbound requests on the server leg
+
+A gateway with no `--diameter-peer-host` only accepts connections: it plays the
+node the peers connect to (e.g. a PCRF that an AF dials). Its outbound requests
+(e.g. a RAR pushed to that AF) are sent on the server leg, on a connection of
+the peer named by the request **`Destination-Host`** (its
+Origin-Host in the CER, compared case-insensitively). In Diameter the peer is
+its Origin-Host, not a connection, so when it has several connections they are
+taken round-robin; the answer (RAA) is correlated by hop-by-hop as on the client
+leg. Without `Destination-Host` (or with `_raw`), any open connection is used,
+round-robin.
+
+```json
+POST /diameter/rx/RAR
+{"Session-Id": "af.example.com;1;1", "Auth-Application-Id": 16777236,
+ "Origin-Host": "pcrf.example.com", "Origin-Realm": "example.com",
+ "Destination-Realm": "example.com", "Destination-Host": "af.example.com",
+ "Re-Auth-Request-Type": 0}
+```
+
+The [answers](#every-outbound-request-gets-an-http2-answer) are those of the client
+leg. A `Destination-Host` with no open connection is never sent to another
+peer: `502` with `"destinationHost"` in the body. A gateway with both legs keeps
+sending its outbound requests on the client leg. The server leg counts them in
+`diameter_server_requests_sent_counter` and `diameter_server_answers_received_counter`.
+
 ### Inbound URI: Session-Id and per-session state
 
 Inbound requests are forwarded as
@@ -346,7 +376,7 @@ configured with [`--decode-as`](#readable-decoding---decode-as).
 | Form | Bytes | Typical AVPs | Example |
 |---|---|---|---|
 | `{"hex": "..."}` | the hex bytes (same as the plain string) | any | `{"hex": "0a8136a5"}` |
-| `{"text": "..."}` | UTF-8 bytes of the text | `AF-Application-Identifier`, `Called-Station-Id`, `AF-Charging-Identifier` | `{"text": "dnn_mbb.com"}` |
+| `{"text": "..."}` | UTF-8 bytes of the text | `AF-Application-Identifier`, `Called-Station-Id`, `AF-Charging-Identifier` | `{"text": "internet.example.com"}` |
 | `{"ipv4": "..."}` | 4 bytes of the address | `Framed-IP-Address` | `{"ipv4": "10.129.54.165"}` |
 | `{"ipv6": "..."}` | 16 bytes of the address | IPv6 addresses held in OctetStrings | `{"ipv6": "2001:db8::1"}` |
 | `{"ipv6Prefix": "<addr>/<len>"}` | RFC 3162: reserved byte, length, prefix bytes | `Framed-IPv6-Prefix` | `{"ipv6Prefix": "2001:db8:1:2::/64"}` |
@@ -692,7 +722,9 @@ HTTP/2 (towards h2agent):
   --h2agent-port <port>           h2agent traffic server port (default: 8000)
 
 HTTP/2 (for outbound from h2agent):
-  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005)
+  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005).
+                                  Without --diameter-peer-host, its requests (e.g. RAR)
+                                  go on the server leg, to the peer named by Destination-Host.
 
 General:
   --workers <n>                   Worker threads (default: nproc)

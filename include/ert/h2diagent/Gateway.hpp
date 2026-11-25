@@ -201,11 +201,29 @@ class Gateway {
     void onH2agentOutboundRequest(const std::string& method, const std::string& uri, const std::string& body,
                                   const nghttp2::asio_http2::header_map& headers, OutboundRespond respond);
 
-    // Send an encoded outbound request on a pooled client and ALWAYS answer the
-    // HTTP/2 client: 200 (answer), 502 (no peer / send failed / undecodable
-    // answer) or 504 (answer timeout).
+    // Send an encoded outbound request and ALWAYS answer the HTTP/2 client: 200
+    // (answer), 502 (no peer / send failed / undecodable answer) or 504 (answer
+    // timeout). It goes on a pooled client; a gateway without a client leg sends
+    // it on the server leg instead (see sendOutboundServerLeg).
     void sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
-                      const ert::metrics::labels_t& additionalLabels, OutboundRespond respond);
+                      const ert::metrics::labels_t& additionalLabels, const std::string& destinationHost,
+                      OutboundRespond respond);
+
+    // Server-initiated request (e.g. RAR, ASR) of a gateway without a client leg:
+    // sent on a server-leg connection of the peer named by the Destination-Host
+    // (any open connection without it), round-robin (helpers::pickServerConnection).
+    void sendOutboundServerLeg(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
+                               const ert::metrics::labels_t& additionalLabels, const std::string& destinationHost,
+                               OutboundRespond respond);
+
+    // Decode the Diameter answer of an outbound request and answer the HTTP/2
+    // client: 200 with its json, or 502 with the raw bytes when undecodable.
+    void respondOutboundAnswer(uint32_t appId, const diametercomm::Peer::Buffer& answerMsg,
+                               const OutboundRespond& respond);
+
+    // True when outbound requests go on the server leg: no client leg configured
+    // (no --diameter-peer-host) but a Diameter server listening.
+    bool outboundOnServerLeg() const { return !diameterClientPool_ && diameterServer_; }
 
     // (Re)connect the HTTP/2 client to h2agent. Creates a fresh nghttp2 session.
     // Must run on the h2clientIo_ thread (the only thread that mutates the session).
@@ -251,6 +269,7 @@ class Gateway {
     // Components
     std::unique_ptr<diametercomm::DiameterServer> diameterServer_;
     std::unique_ptr<DiameterClientPool> diameterClientPool_;  // N outbound connections (N>=1)
+    std::atomic<std::size_t> serverLegCursor_{0};             // round-robin of server-leg outbound requests
 
     // Multi-stack dictionaries indexed by Application-Id
     std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;

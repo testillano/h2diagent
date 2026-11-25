@@ -440,6 +440,69 @@ TEST(Helpers, RoundRobinIndex_ZeroSizeSafe) {
 }
 
 // =============================================================================
+// pickServerConnection (server-leg outbound requests) -- pure, used by Gateway
+// =============================================================================
+TEST(Helpers, PickServerConnection_NoConnections) {
+    std::atomic<std::size_t> cursor{0};
+    EXPECT_EQ(pickServerConnection({}, "", cursor), NoServerConnection);
+    EXPECT_EQ(pickServerConnection({}, "af.example.com", cursor), NoServerConnection);
+}
+
+TEST(Helpers, PickServerConnection_NoneOpen) {
+    // connected but not open (capabilities exchange pending, closing): not a route
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {{false, "af.example.com"}, {false, "af.example.com"}};
+    EXPECT_EQ(pickServerConnection(c, "", cursor), NoServerConnection);
+    EXPECT_EQ(pickServerConnection(c, "af.example.com", cursor), NoServerConnection);
+}
+
+TEST(Helpers, PickServerConnection_NoDestinationHostRoundRobinOverOpen) {
+    // without Destination-Host every OPEN connection is a candidate (closed skipped)
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {
+        {true, "a.example.com"}, {false, "b.example.com"}, {true, "c.example.com"}};
+    EXPECT_EQ(pickServerConnection(c, "", cursor), 0u);
+    EXPECT_EQ(pickServerConnection(c, "", cursor), 2u);
+    EXPECT_EQ(pickServerConnection(c, "", cursor), 0u);
+    EXPECT_EQ(pickServerConnection(c, "", cursor), 2u);
+}
+
+TEST(Helpers, PickServerConnection_DestinationHostSelectsItsConnections) {
+    // two connections of one peer, one of another: only the first peer ones, alternated
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {
+        {true, "af.example.com"}, {true, "other.example.com"}, {true, "af.example.com"}, {false, "af.example.com"}};
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_EQ(pickServerConnection(c, "af.example.com", cursor), 0u);
+        EXPECT_EQ(pickServerConnection(c, "af.example.com", cursor), 2u);
+    }
+    EXPECT_EQ(pickServerConnection(c, "other.example.com", cursor), 1u);
+}
+
+TEST(Helpers, PickServerConnection_DestinationHostCaseInsensitive) {
+    // a DiameterIdentity is a FQDN: case does not matter
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {{true, "AF.Example.COM"}};
+    EXPECT_EQ(pickServerConnection(c, "af.example.com", cursor), 0u);
+}
+
+TEST(Helpers, PickServerConnection_UnknownDestinationHost) {
+    // never sent to another node: no candidate
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {{true, "af.example.com"}, {true, "af.example.com.evil"}};
+    EXPECT_EQ(pickServerConnection(c, "pcef.example.com", cursor), NoServerConnection);
+    // a prefix is not a match either
+    EXPECT_EQ(pickServerConnection(c, "af.example", cursor), NoServerConnection);
+}
+
+TEST(Helpers, PickServerConnection_DestinationHostOfAClosedConnection) {
+    // the named peer only has a closed connection: no route (no fallback to others)
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<ServerConnection> c = {{false, "af.example.com"}, {true, "other.example.com"}};
+    EXPECT_EQ(pickServerConnection(c, "af.example.com", cursor), NoServerConnection);
+}
+
+// =============================================================================
 // Raw message helpers (negative testing)
 // =============================================================================
 TEST(Helpers, HexToBytes_Valid) {

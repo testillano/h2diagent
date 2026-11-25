@@ -8,6 +8,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <ert/diametercomm/Sctp.hpp>
@@ -255,6 +256,40 @@ inline bool validateAddressOption(const std::string& option, const std::string& 
 inline std::size_t roundRobinIndex(std::atomic<std::size_t>& cursor, std::size_t size) {
     if (size <= 1) return 0;
     return cursor.fetch_add(1, std::memory_order_relaxed) % size;
+}
+
+// A server-leg connection, as seen by pickServerConnection.
+struct ServerConnection {
+    bool open{false};        // capabilities exchanged (Peer::State::Open)
+    std::string originHost;  // Origin-Host the peer announced in its CER
+};
+
+// pickServerConnection result when no connection qualifies.
+constexpr std::size_t NoServerConnection = static_cast<std::size_t>(-1);
+
+// Server-leg connection for an outbound request of a gateway WITHOUT a client
+// leg (it plays a node the peers connect to, e.g. a PCRF pushing a RAR to an
+// AF connected to it). Candidates are the OPEN connections whose peer
+// Origin-Host equals the request Destination-Host, compared case-insensitively
+// (a DiameterIdentity is a FQDN); with no Destination-Host, every open one. In
+// Diameter the peer is its Origin-Host, not one connection, so any of its
+// connections is a valid route: they are taken round-robin. Returns the index
+// in 'connections', or NoServerConnection.
+inline std::size_t pickServerConnection(const std::vector<ServerConnection>& connections,
+                                        const std::string& destinationHost, std::atomic<std::size_t>& cursor) {
+    auto sameIdentity = [](const std::string& a, const std::string& b) {
+        return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+                   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+               });
+    };
+    std::vector<std::size_t> candidates;
+    for (std::size_t i = 0; i < connections.size(); ++i) {
+        if (!connections[i].open) continue;
+        if (!destinationHost.empty() && !sameIdentity(connections[i].originHost, destinationHost)) continue;
+        candidates.push_back(i);
+    }
+    if (candidates.empty()) return NoServerConnection;
+    return candidates[roundRobinIndex(cursor, candidates.size())];
 }
 
 // =============================================================================

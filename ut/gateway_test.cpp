@@ -62,6 +62,7 @@ const char* GxDictionary = R"json({
     {"name": "Result-Code", "code": 268, "m-bit": true, "single": {"format": "Unsigned32"}},
     {"name": "Product-Name", "code": 269, "single": {"format": "UTF8String"}},
     {"name": "Destination-Realm", "code": 283, "m-bit": true, "single": {"format": "DiameterIdentity"}},
+    {"name": "Destination-Host", "code": 293, "m-bit": true, "single": {"format": "DiameterIdentity"}},
     {"name": "Origin-Realm", "code": 296, "m-bit": true, "single": {"format": "DiameterIdentity"}},
     {"name": "CC-Request-Number", "code": 415, "m-bit": true, "single": {"format": "Unsigned32"}},
     {"name": "CC-Request-Type", "code": 416, "m-bit": true, "single": {"format": "Enumerated", "enum": "1-4"}}
@@ -71,7 +72,7 @@ const char* GxDictionary = R"json({
       {"type": "Fixed", "name": "Session-Id"}, {"type": "Mandatory", "name": "Auth-Application-Id"},
       {"type": "Mandatory", "name": "Origin-Host"}, {"type": "Mandatory", "name": "Origin-Realm"},
       {"type": "Mandatory", "name": "Destination-Realm"}, {"type": "Mandatory", "name": "CC-Request-Type"},
-      {"type": "Mandatory", "name": "CC-Request-Number"}]},
+      {"type": "Mandatory", "name": "CC-Request-Number"}, {"type": "Optional", "name": "Destination-Host"}]},
     {"name": "CC-Answer", "code": 272, "avprule": [
       {"type": "Fixed", "name": "Session-Id"}, {"type": "Mandatory", "name": "Auth-Application-Id"},
       {"type": "Mandatory", "name": "Origin-Host"}, {"type": "Mandatory", "name": "Origin-Realm"},
@@ -427,4 +428,182 @@ TEST_F(Gateway_test, FaultInjection) {
     // the test client reconnects to keep the environment as found
     env->sutClient->connect("127.0.0.1", GatewayDiameterPort);
     EXPECT_TRUE(waitFor([]() { return openConnections("server") == 1; }));
+}
+
+// =============================================================================
+// Server-leg outbound requests: a gateway WITHOUT client leg (it plays the node
+// the peers connect to, e.g. a PCRF) sends the director requests (e.g. a RAR)
+// on the server leg, to the peer named by Destination-Host, round-robin.
+// =============================================================================
+namespace {
+constexpr uint16_t ServerOnlyDiameterPort = 16968;  // server-only gateway listener
+constexpr uint16_t ServerOnlyHttp2Port = 16905;     // its outbound trigger port
+constexpr uint16_t NoPeersDiameterPort = 16970;     // server-only gateway nobody connects to
+constexpr uint16_t NoPeersHttp2Port = 16906;
+constexpr uint16_t UnusedH2agentPort = 16901;  // no inbound traffic in these tests
+}  // namespace
+
+class GatewayServerLeg_test : public ::testing::Test {
+   protected:
+    // A peer connected to the server-only gateway: answers every request it
+    // receives (2001), except the 'noanswer' sessions, and counts them.
+    struct ConnectedPeer {
+        std::unique_ptr<DiameterClient> client;
+        std::atomic<int> received{0};
+    };
+    struct Env {
+        boost::asio::io_context io{2};
+        std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work;
+        std::vector<std::thread> threads;
+        std::string dictionaryPath;
+        std::unique_ptr<ert::h2diagent::Gateway> gateway;         // with connected peers
+        std::unique_ptr<ert::h2diagent::Gateway> gatewayNoPeers;  // listening, nobody connected
+        // two connections of one peer (same Origin-Host, e.g. an AF) and one of another
+        std::vector<std::unique_ptr<ConnectedPeer>> peers;
+    };
+    static Env* env;
+
+    static ert::h2diagent::GatewayConfig serverOnlyConfig(uint16_t diameterPort, uint16_t http2Port) {
+        ert::h2diagent::GatewayConfig config;
+        config.diameterPort = diameterPort;  // no diameterPeerHost: no client leg
+        config.originHost = "pcrf.example.com";
+        config.originRealm = "example.com";
+        config.productName = "h2diagent-ut-server-leg";
+        config.watchdogIntervalSec = 0;
+        config.dictionaryPaths = {env->dictionaryPath};
+        config.diameterTimeoutMs = 500;
+        config.h2agentHost = "127.0.0.1";
+        config.h2agentPort = UnusedH2agentPort;
+        config.http2ServerPort = http2Port;
+        config.adminPort = 0;
+        config.metricsEnabled = false;
+        return config;
+    }
+
+    static void SetUpTestSuite() {
+        env = new Env;
+        env->work = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+            boost::asio::make_work_guard(env->io));
+        for (int i = 0; i < 2; ++i) env->threads.emplace_back([]() { env->io.run(); });
+
+        env->dictionaryPath = "/tmp/h2diagent-ut-gx-server-leg-" + std::to_string(::getpid()) + ".json";
+        std::ofstream(env->dictionaryPath) << GxDictionary;
+
+        env->gateway = std::make_unique<ert::h2diagent::Gateway>(
+            env->io, serverOnlyConfig(ServerOnlyDiameterPort, ServerOnlyHttp2Port));
+        env->gateway->start();
+        env->gatewayNoPeers =
+            std::make_unique<ert::h2diagent::Gateway>(env->io, serverOnlyConfig(NoPeersDiameterPort, NoPeersHttp2Port));
+        env->gatewayNoPeers->start();
+
+        for (const std::string originHost : {"af.example.com", "af.example.com", "other.example.com"}) {
+            auto peer = std::make_unique<ConnectedPeer>();
+            Peer::Config config{originHost, "example.com", "127.0.0.1", 0, "UtPeer", 0, {GxAppId}};
+            peer->client = std::make_unique<DiameterClient>(env->io, config);
+            peer->client->setReconnectEnabled(false);
+            ConnectedPeer* raw = peer.get();
+            peer->client->setRequestCallback([raw](std::shared_ptr<Peer>, Peer::Buffer&& msg) {
+                raw->received++;
+                if (decode(msg).value("Session-Id", "").find("noanswer") != std::string::npos) return;
+                raw->client->sendAnswer(answerTo(msg, 2001));
+            });
+            peer->client->connect("127.0.0.1", ServerOnlyDiameterPort);
+            env->peers.push_back(std::move(peer));
+        }
+        ASSERT_TRUE(waitFor([]() {
+            for (const auto& p : env->peers)
+                if (!p->client->isReady()) return false;
+            return true;
+        }));
+    }
+
+    static void TearDownTestSuite() {
+        for (auto& p : env->peers) p->client->close();
+        env->gateway->stop();
+        env->gatewayNoPeers->stop();
+        env->work.reset();
+        env->io.stop();
+        for (auto& t : env->threads) t.join();
+        std::remove(env->dictionaryPath.c_str());
+        delete env;
+        env = nullptr;
+    }
+
+    // Server-initiated request (the CCR of the ut dictionary plays it), with an
+    // optional Destination-Host.
+    static std::string request(const std::string& sessionId, const std::string& destinationHost) {
+        auto j = ccr(sessionId, "pcrf.example.com");
+        if (!destinationHost.empty()) j["Destination-Host"] = destinationHost;
+        return j.dump();
+    }
+
+    static void resetCounts() {
+        for (auto& p : env->peers) p->received = 0;
+    }
+};
+
+GatewayServerLeg_test::Env* GatewayServerLeg_test::env = nullptr;
+
+TEST_F(GatewayServerLeg_test, DestinationHostRoutesRoundRobinToItsConnections) {
+    resetCounts();
+    for (int i = 0; i < 4; ++i) {
+        const std::string sid = "pcrf.example.com;ut-rar;" + std::to_string(i);
+        auto r = h2(ServerOnlyHttp2Port, "POST", "/diameter/gx/CCR", request(sid, "af.example.com"));
+        ASSERT_EQ(r.first, 200) << r.second;
+        const auto answer = nlohmann::json::parse(r.second);
+        EXPECT_EQ(answer["Result-Code"], 2001);
+        EXPECT_EQ(answer["Session-Id"], sid);
+    }
+    // only the af.example.com connections, alternated; never the other peer
+    EXPECT_EQ(env->peers[0]->received.load(), 2);
+    EXPECT_EQ(env->peers[1]->received.load(), 2);
+    EXPECT_EQ(env->peers[2]->received.load(), 0);
+}
+
+TEST_F(GatewayServerLeg_test, DestinationHostCaseInsensitive) {
+    resetCounts();
+    auto r =
+        h2(ServerOnlyHttp2Port, "POST", "/diameter/gx/CCR", request("pcrf.example.com;ut-case;1", "OTHER.example.COM"));
+    ASSERT_EQ(r.first, 200) << r.second;
+    EXPECT_EQ(env->peers[2]->received.load(), 1);
+}
+
+TEST_F(GatewayServerLeg_test, NoDestinationHostAnyOpenConnection) {
+    resetCounts();
+    for (int i = 0; i < 3; ++i) {
+        auto r = h2(ServerOnlyHttp2Port, "POST", "/diameter/gx/CCR",
+                    request("pcrf.example.com;ut-any;" + std::to_string(i), ""));
+        ASSERT_EQ(r.first, 200) << r.second;
+    }
+    // round-robin over the three connections
+    for (const auto& p : env->peers) EXPECT_EQ(p->received.load(), 1);
+}
+
+TEST_F(GatewayServerLeg_test, UnknownDestinationHost) {
+    // never sent to another node: 502, nothing received
+    resetCounts();
+    auto r = h2(ServerOnlyHttp2Port, "POST", "/diameter/gx/CCR",
+                request("pcrf.example.com;ut-unknown;1", "pcef.example.com"));
+    EXPECT_EQ(r.first, 502) << r.second;
+    const auto body = nlohmann::json::parse(r.second, nullptr, false);
+    EXPECT_EQ(body.value("destinationHost", ""), "pcef.example.com");
+    EXPECT_EQ(body.value("peerState", ""), "closed");
+    for (const auto& p : env->peers) EXPECT_EQ(p->received.load(), 0);
+}
+
+TEST_F(GatewayServerLeg_test, AnswerTimeout) {
+    resetCounts();
+    auto r =
+        h2(ServerOnlyHttp2Port, "POST", "/diameter/gx/CCR", request("pcrf.example.com;noanswer;1", "af.example.com"));
+    EXPECT_EQ(r.first, 504) << r.second;
+    EXPECT_EQ(env->peers[0]->received.load() + env->peers[1]->received.load(), 1);
+}
+
+TEST_F(GatewayServerLeg_test, NoConnectedPeer) {
+    // listening, nobody connected: 502 with or without Destination-Host
+    for (const std::string dest : {"", "af.example.com"}) {
+        SCOPED_TRACE(dest);
+        auto r = h2(NoPeersHttp2Port, "POST", "/diameter/gx/CCR", request("pcrf.example.com;ut-nopeer;1", dest));
+        EXPECT_EQ(r.first, 502) << r.second;
+    }
 }

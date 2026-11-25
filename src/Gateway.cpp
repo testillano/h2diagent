@@ -1107,9 +1107,11 @@ void Gateway::onH2agentOutboundRequest(
         ert::tracing::Logger::asString("Outbound trigger: %s %s (%zu bytes)", method.c_str(), uri.c_str(), body.size()),
         ERT_FILE_LOCATION));
 
-    if (!diameterClientPool_ || !diameterClientPool_->anyReady()) {
+    const bool peerReady = outboundOnServerLeg() ? diameterServer_->activePeerCount() > 0
+                                                 : (diameterClientPool_ && diameterClientPool_->anyReady());
+    if (!peerReady) {
         LOGWARNING(
-            ert::tracing::Logger::warning("Diameter client not connected for outbound request", ERT_FILE_LOCATION));
+            ert::tracing::Logger::warning("Diameter peer not connected for outbound request", ERT_FILE_LOCATION));
         // Gateway-to-upstream failure: no open Diameter peer to the stack. Fail fast with
         // 502 Bad Gateway (502 = upstream unreachable; 503 is reserved for the gateway's
         // own overload). The x-diameter-peer-state header reports the cause so the director
@@ -1150,7 +1152,8 @@ void Gateway::onH2agentOutboundRequest(
                 ert::tracing::Logger::asString("Sending raw Diameter request (%zu bytes) to peer", rawRequest.size()),
                 ERT_FILE_LOCATION));
             uint32_t rawAppId = helpers::extractApplicationId(rawRequest);
-            sendOutbound(std::move(rawRequest), rawAppId, {}, respond);
+            // no json to read a Destination-Host from: any peer of the server leg
+            sendOutbound(std::move(rawRequest), rawAppId, {}, "", respond);
             return;
         }
 
@@ -1208,8 +1211,12 @@ void Gateway::onH2agentOutboundRequest(
             additionalLabels[sanitizeLabelKey(avpName)] = std::move(value);
         }
 
-        // 3. Send (answer, timeout and send failure all respond to h2agent)
-        sendOutbound(std::move(encoded), appId, additionalLabels, respond);
+        // 3. Send (answer, timeout and send failure all respond to h2agent). The
+        // Destination-Host only routes on the server leg (no client leg).
+        std::string destinationHost;
+        auto itDest = reqJson.find("Destination-Host");
+        if (itDest != reqJson.end() && itDest->is_string()) destinationHost = itDest->get<std::string>();
+        sendOutbound(std::move(encoded), appId, additionalLabels, destinationHost, respond);
 
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
@@ -1222,7 +1229,13 @@ void Gateway::onH2agentOutboundRequest(
 // sendOutbound - send an encoded request and ALWAYS respond to the HTTP/2 client
 // ============================================================================
 void Gateway::sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
-                           const ert::metrics::labels_t& additionalLabels, OutboundRespond respond) {
+                           const ert::metrics::labels_t& additionalLabels, const std::string& destinationHost,
+                           OutboundRespond respond) {
+    if (outboundOnServerLeg()) {
+        sendOutboundServerLeg(std::move(encoded), appId, additionalLabels, destinationHost, std::move(respond));
+        return;
+    }
+
     // Pooled Diameter client (round-robin, preferring a ready connection). The
     // answer normally returns on the SAME client (per-connection correlation);
     // cross-leg / end-to-end fallbacks are handled by diametercomm + the
@@ -1245,31 +1258,7 @@ void Gateway::sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
     uint32_t hbh = client->send(
         std::move(encoded),
         [this, respond, appId](const diametercomm::Peer::Buffer& answerMsg) {
-            // 4. Diameter answer received -> decode -> JSON -> HTTP/2 response
-            try {
-                const auto& dict = getDictionary(appId);
-                diametercodec::codec::Message answer;
-                answer.decode(answerMsg.data(), answerMsg.size(), dict);
-
-                nlohmann::json respJson = answer.toJson(dict, decodeOptions_);
-                std::string respStr = respJson.dump();
-
-                LOGINFORMATIONAL(ert::tracing::Logger::informational(
-                    ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
-                    ERT_FILE_LOCATION));
-
-                respond(200, respStr, {});
-
-            } catch (const std::exception& e) {
-                LOGWARNING(ert::tracing::Logger::warning(
-                    ert::tracing::Logger::asString("Failed to decode Diameter answer: %s", e.what()),
-                    ERT_FILE_LOCATION));
-                // Raw bytes + decoder error let the director assert malformed answers.
-                respond(502,
-                        helpers::errorBody("Failed to decode Diameter answer",
-                                           helpers::undecodedMessageJson(answerMsg, e.what())),
-                        {});
-            }
+            respondOutboundAnswer(appId, answerMsg, respond);
         },
         timeoutMs, additionalLabels,
         [respond, timeoutMs](uint32_t timedOutHbh) {
@@ -1287,6 +1276,97 @@ void Gateway::sendOutbound(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
         nghttp2::asio_http2::header_map h;
         if (peerDown) h.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
         respond(502, helpers::errorBody("Diameter send failed"), h);
+    }
+}
+
+// ============================================================================
+// sendOutboundServerLeg - server-initiated request (no client leg configured)
+// ============================================================================
+void Gateway::sendOutboundServerLeg(diametercomm::Peer::Buffer&& encoded, uint32_t appId,
+                                    const ert::metrics::labels_t& additionalLabels, const std::string& destinationHost,
+                                    OutboundRespond respond) {
+    // Snapshot of the server leg: peers connect and leave concurrently, so the
+    // choice is made over one copy and the chosen peer is kept alive by its
+    // shared_ptr (a peer closed meanwhile refuses the send: 502 below).
+    const auto peers = diameterServer_->peers();
+    std::vector<helpers::ServerConnection> connections;
+    connections.reserve(peers.size());
+    for (const auto& peer : peers) {
+        connections.push_back({peer && peer->state() == diametercomm::Peer::State::Open,
+                               peer ? peer->remoteOriginHost() : std::string()});
+    }
+    const std::size_t index = helpers::pickServerConnection(connections, destinationHost, serverLegCursor_);
+    if (index == helpers::NoServerConnection) {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("No open server-leg connection for outbound request (Destination-Host '%s')",
+                                           destinationHost.c_str()),
+            ERT_FILE_LOCATION));
+        // No connected peer, or none with that Destination-Host: never send it to
+        // another node. Same 502 contract as the client leg.
+        nghttp2::asio_http2::header_map peerDownHeaders;
+        peerDownHeaders.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+        nlohmann::json extra = {{"peerState", "closed"}};
+        if (!destinationHost.empty()) extra["destinationHost"] = destinationHost;
+        respond(502, helpers::errorBody("Diameter peer not connected", extra), peerDownHeaders);
+        return;
+    }
+    const std::shared_ptr<diametercomm::Peer>& peer = peers[index];
+
+    uint32_t timeoutMs = config_.diameterTimeoutMs;
+    // Same contract as the client leg: exactly one of answer / timeout fires; a
+    // refused send fires neither and returns 0. The answer (e.g. RAA) is
+    // correlated by hop-by-hop on this server, or recovered from the client leg.
+    uint32_t hbh = diameterServer_->sendRequest(
+        peer, std::move(encoded),
+        [this, respond, appId](const diametercomm::Peer::Buffer& answerMsg) {
+            respondOutboundAnswer(appId, answerMsg, respond);
+        },
+        timeoutMs, additionalLabels,
+        [respond, timeoutMs](uint32_t timedOutHbh) {
+            respond(504,
+                    helpers::errorBody("Diameter answer timeout",
+                                       {{"hopByHop", helpers::hexId(timedOutHbh)}, {"timeoutMs", timeoutMs}}),
+                    {});
+        });
+
+    if (hbh == 0) {
+        bool peerDown = peer->state() != diametercomm::Peer::State::Open;
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Diameter server-leg send failed (peer %s)", peerDown ? "closed" : "open"),
+            ERT_FILE_LOCATION));
+        nghttp2::asio_http2::header_map h;
+        if (peerDown) h.emplace("x-diameter-peer-state", nghttp2::asio_http2::header_value{"closed", false});
+        respond(502, helpers::errorBody("Diameter send failed"), h);
+    }
+}
+
+// ============================================================================
+// respondOutboundAnswer - Diameter answer -> JSON -> HTTP/2 response
+// ============================================================================
+void Gateway::respondOutboundAnswer(uint32_t appId, const diametercomm::Peer::Buffer& answerMsg,
+                                    const OutboundRespond& respond) {
+    try {
+        const auto& dict = getDictionary(appId);
+        diametercodec::codec::Message answer;
+        answer.decode(answerMsg.data(), answerMsg.size(), dict);
+
+        nlohmann::json respJson = answer.toJson(dict, decodeOptions_);
+        std::string respStr = respJson.dump();
+
+        LOGINFORMATIONAL(ert::tracing::Logger::informational(
+            ert::tracing::Logger::asString("Diameter answer -> JSON response (%zu bytes)", respStr.size()),
+            ERT_FILE_LOCATION));
+
+        respond(200, respStr, {});
+
+    } catch (const std::exception& e) {
+        LOGWARNING(ert::tracing::Logger::warning(
+            ert::tracing::Logger::asString("Failed to decode Diameter answer: %s", e.what()), ERT_FILE_LOCATION));
+        // Raw bytes + decoder error let the director assert malformed answers.
+        respond(
+            502,
+            helpers::errorBody("Failed to decode Diameter answer", helpers::undecodedMessageJson(answerMsg, e.what())),
+            {});
     }
 }
 
