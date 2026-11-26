@@ -13,6 +13,10 @@ function(set_cmake_compiler_flags)
     $<$<CONFIG:Debug>:-O0>
     $<$<CONFIG:Debug>:-g3>
     $<$<CONFIG:Debug>:--coverage>
+    # Coverage counters updated atomically: the gateway and the unit tests run on
+    # many threads (client connection threads, HTTP/2 threads), and plain counter
+    # increments race into impossible negative counts that make lcov fail.
+    $<$<CONFIG:Debug>:-fprofile-update=atomic>
   )
 
   add_compile_options(-frecord-gcc-switches)
