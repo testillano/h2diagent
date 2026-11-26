@@ -15,6 +15,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/http2comm/URLFunctions.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace ert {
@@ -256,6 +257,16 @@ inline bool validateAddressOption(const std::string& option, const std::string& 
 inline std::size_t roundRobinIndex(std::atomic<std::size_t>& cursor, std::size_t size) {
     if (size <= 1) return 0;
     return cursor.fetch_add(1, std::memory_order_relaxed) % size;
+}
+
+// Threads of the outbound HTTP/2 server: the configured number, else the workers,
+// else the hardware concurrency (never less than 1).
+template <class Config>
+inline int http2ServerThreads(const Config& c) {
+    if (c.http2ServerThreads > 0) return c.http2ServerThreads;
+    if (c.workers > 0) return c.workers;
+    const unsigned hc = std::thread::hardware_concurrency();
+    return hc > 0 ? static_cast<int>(hc) : 1;
 }
 
 // A server-leg connection, as seen by pickServerConnection.

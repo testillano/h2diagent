@@ -100,6 +100,9 @@ diameter:
 # gateway and an h2agent sidecar never collide in a pod.
 # HTTP/2 server where a director (or the h2agent sidecar) posts outbound triggers.
 http2ServerPort: 8005
+# Threads of that HTTP/2 server (--http2-server-threads). 0 = the gateway default
+# (its worker threads). One thread caps the outbound traffic at one core.
+http2ServerThreads: 0
 # Admin interface (/admin/v1: health, peers, configuration, logging). Also the
 # probes target (GET /admin/v1/health). 0 disables it (probes: TCP on http2ServerPort).
 adminPort: 8079

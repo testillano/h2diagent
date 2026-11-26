@@ -116,6 +116,10 @@ struct GatewayConfig {
     // HTTP/2 server (for outbound triggers from h2agent): h2agent ports + 5
     // (h2agent 8000 / 8074 / 8080, h2diagent 8005 / 8079 / 8085) so both fit in a pod.
     uint16_t http2ServerPort{8005};
+    // Threads of that HTTP/2 server (each director connection is served by one of
+    // them). 0 = workers. A single thread serializes every outbound request (json
+    // parse, Diameter encode, answer write) and caps the gateway at one core.
+    int http2ServerThreads{0};
 
     // General
     uint16_t adminPort{8079};  // admin interface (/admin/v1); 0 disables it

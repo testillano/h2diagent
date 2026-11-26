@@ -106,7 +106,8 @@ void usage(const char* name) {
         << "HTTP/2 (for outbound from h2agent):\n"
         << "  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005).\n"
         << "                                  Without --diameter-peer-host, its requests (e.g. RAR)\n"
-        << "                                  go on the server leg, to the peer named by Destination-Host.\n\n"
+        << "                                  go on the server leg, to the peer named by Destination-Host.\n"
+        << "  --http2-server-threads <n>      Threads of that HTTP/2 server (default: --workers)\n\n"
         << "General:\n"
         << "  --workers <n>                   Worker threads (default: nproc)\n"
         << "  [-l|--log-level <level>]        Log level: Debug|Informational|Notice|Warning|Error (default: Warning)\n"
@@ -191,6 +192,7 @@ int main(int argc, char* argv[]) {
         {"h2agent-port", required_argument, nullptr, 0},
         {"http2-server-port", required_argument, nullptr, 0},
         {"workers", required_argument, nullptr, 0},
+        {"http2-server-threads", required_argument, nullptr, 0},
         {"log-level", required_argument, nullptr, 'l'},
         {"verbose", no_argument, nullptr, 'v'},
         {"admin-port", required_argument, nullptr, 0},
@@ -282,7 +284,13 @@ int main(int argc, char* argv[]) {
                     config.http2ServerPort = std::stoi(optarg);
                 else if (name == "workers")
                     config.workers = std::stoi(optarg);
-                else if (name == "admin-port")
+                else if (name == "http2-server-threads") {
+                    config.http2ServerThreads = std::stoi(optarg);
+                    if (config.http2ServerThreads < 1) {
+                        std::cerr << "Invalid --http2-server-threads: must be >= 1" << std::endl;
+                        return 1;
+                    }
+                } else if (name == "admin-port")
                     config.adminPort = std::stoi(optarg);
                 else if (name == "prometheus-port")
                     config.prometheusPort = std::stoi(optarg);
@@ -416,7 +424,8 @@ int main(int argc, char* argv[]) {
         for (const auto& p : config.dictionaryPaths) std::cout << "  " << p << std::endl;
     }
     std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << std::endl;
-    std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << std::endl;
+    std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << " ("
+              << ert::h2diagent::helpers::http2ServerThreads(config) << " threads)" << std::endl;
     std::cout << "Admin port: " << (config.adminPort > 0 ? std::to_string(config.adminPort) : "disabled") << std::endl;
     if (config.ceaResultCode != 2001)
         std::cout << "CEA Result-Code: " << (config.ceaResultCode < 0 ? "none" : std::to_string(config.ceaResultCode))

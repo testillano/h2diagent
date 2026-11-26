@@ -437,6 +437,9 @@ components:
               type: array
               items:
                 type: string
+        http2ServerThreads:
+          type: integer
+          description: Threads of the outbound HTTP/2 server (--http2-server-threads, default the workers)
         workers:
           type: integer
           description: Worker threads (0 = nproc)

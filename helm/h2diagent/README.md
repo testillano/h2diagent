@@ -52,6 +52,7 @@ server/PCRF mock-brain case turns the sidecar on.
 | `diameter.sctp.*` | `0` / `""` | SCTP path supervision: `heartbeatIntervalMs`, `pathMaxRetrans`, `primaryPeerAddress` (client). Kernel defaults when not given. |
 | `diameter.timeoutMs` | `5000` | Transaction timeout (`--diameter-timeout-ms`); expired outbound requests get a 504. |
 | `http2ServerPort` | `8005` | HTTP/2 server where an (external) director posts outbound triggers. Exposed in the Service as `http2-trigger`. |
+| `http2ServerThreads` | `0` | Threads of that HTTP/2 server (`--http2-server-threads`); `0` = the gateway default (its worker threads). One thread caps the outbound traffic at one core. |
 | `adminPort` | `8079` | Admin interface `/admin/v1` (health, peers, configuration, logging), Service `gw-admin`; the probes call `GET /admin/v1/health`. `0` disables it (TCP probes on `http2ServerPort`). |
 | `prometheusPort` | `8085` | Gateway metrics port (Service `gw-metrics`). |
 

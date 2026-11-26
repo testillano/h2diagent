@@ -128,6 +128,7 @@ TEST(Admin, ConfigurationHasNoSecrets) {
     EXPECT_EQ(j["diameter"]["decodeAs"]["Framed-IP-Address"], "ipv4");
     // the default ports: h2agent ones + 5
     EXPECT_EQ(j["http2ServerPort"], 8005);
+    EXPECT_GE(j["http2ServerThreads"].get<int>(), 1);  // resolved, never 0
     EXPECT_EQ(j["adminPort"], 8079);
     EXPECT_EQ(j["metrics"]["prometheusPort"], 8085);
     EXPECT_EQ(j["diameter"]["ceaResultCode"], 2001);

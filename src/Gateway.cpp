@@ -412,6 +412,10 @@ void Gateway::start() {
     // --- HTTP/2 server for outbound triggers from h2agent ---
     if (config_.http2ServerPort > 0) {
         h2server_ = std::make_unique<nghttp2::asio_http2::server::http2>();
+        // nghttp2 serves the whole server on ONE thread by default: every outbound
+        // request (json parse, Diameter encode, answer write) would be serialized
+        // there, capping the gateway at one core whatever the Diameter workers.
+        h2server_->num_threads(static_cast<std::size_t>(helpers::http2ServerThreads(config_)));
         h2server_->handle("/", [this](const nghttp2::asio_http2::server::request& req,
                                       const nghttp2::asio_http2::server::response& res) {
             // Collect request body
@@ -483,7 +487,8 @@ void Gateway::start() {
                 ERT_FILE_LOCATION));
         } else {
             LOGWARNING(ert::tracing::Logger::warning(
-                ert::tracing::Logger::asString("HTTP/2 server listening on port %d", config_.http2ServerPort),
+                ert::tracing::Logger::asString("HTTP/2 server listening on port %d (%d threads)",
+                                               config_.http2ServerPort, helpers::http2ServerThreads(config_)),
                 ERT_FILE_LOCATION));
         }
     } else {

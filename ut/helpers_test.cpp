@@ -7,6 +7,7 @@ Unit tests for helper functions.
 
 #include <atomic>
 #include <ert/h2diagent/helpers.hpp>
+#include <thread>
 
 using namespace ert::h2diagent::helpers;
 
@@ -437,6 +438,37 @@ TEST(Helpers, RoundRobinIndex_ZeroSizeSafe) {
     // Defensive: size 0 must not divide-by-zero; returns 0.
     std::atomic<std::size_t> cursor{0};
     EXPECT_EQ(roundRobinIndex(cursor, 0), 0u);
+}
+
+// =============================================================================
+// http2ServerThreads (outbound HTTP/2 server threads) -- pure, used by Gateway
+// =============================================================================
+namespace {
+struct ThreadsConfig {
+    int http2ServerThreads{0};
+    int workers{0};
+};
+}  // namespace
+
+TEST(Helpers, Http2ServerThreads_Explicit) {
+    // the option wins over the workers
+    EXPECT_EQ(http2ServerThreads(ThreadsConfig{4, 16}), 4);
+    EXPECT_EQ(http2ServerThreads(ThreadsConfig{1, 0}), 1);
+}
+
+TEST(Helpers, Http2ServerThreads_DefaultsToWorkers) { EXPECT_EQ(http2ServerThreads(ThreadsConfig{0, 8}), 8); }
+
+TEST(Helpers, Http2ServerThreads_DefaultsToHardwareConcurrency) {
+    // neither given: the hardware concurrency, never less than 1
+    const unsigned hc = std::thread::hardware_concurrency();
+    EXPECT_EQ(http2ServerThreads(ThreadsConfig{0, 0}), hc > 0 ? static_cast<int>(hc) : 1);
+    EXPECT_GE(http2ServerThreads(ThreadsConfig{0, 0}), 1);
+}
+
+TEST(Helpers, Http2ServerThreads_NegativeIgnored) {
+    // defensive: a negative value is not a thread count (main.cpp rejects it too)
+    EXPECT_EQ(http2ServerThreads(ThreadsConfig{-2, 3}), 3);
+    EXPECT_GE(http2ServerThreads(ThreadsConfig{-2, -1}), 1);
 }
 
 // =============================================================================

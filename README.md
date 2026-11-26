@@ -725,6 +725,7 @@ HTTP/2 (for outbound from h2agent):
   --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005).
                                   Without --diameter-peer-host, its requests (e.g. RAR)
                                   go on the server leg, to the peer named by Destination-Host.
+  --http2-server-threads <n>      Threads of that HTTP/2 server (default: --workers)
 
 General:
   --workers <n>                   Worker threads (default: nproc)

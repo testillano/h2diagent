@@ -162,6 +162,10 @@ spec:
             {{- end }}
             - "--http2-server-port"
             - {{ .Values.http2ServerPort | quote }}
+            {{- if gt (int .Values.http2ServerThreads) 0 }}
+            - "--http2-server-threads"
+            - {{ .Values.http2ServerThreads | quote }}
+            {{- end }}
             - "--admin-port"
             - {{ .Values.adminPort | quote }}
             {{- if .Values.metrics.enabled }}

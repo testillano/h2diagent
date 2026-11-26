@@ -32,6 +32,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercomm/DiameterClient.hpp>
 #include <ert/diametercomm/Peer.hpp>
 #include <ert/h2diagent/Gateway.hpp>
+#include <ert/h2diagent/helpers.hpp>
 #include <ert/tracing/Logger.hpp>
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -243,6 +244,7 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
     return {{"diameter", diameter},
             {"h2agent", {{"host", c.h2agentHost}, {"port", c.h2agentPort}}},
             {"http2ServerPort", c.http2ServerPort},
+            {"http2ServerThreads", helpers::http2ServerThreads(c)},
             {"adminPort", c.adminPort},
             {"metrics",
              {{"enabled", c.metricsEnabled},
