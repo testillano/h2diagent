@@ -142,6 +142,10 @@ h2agent:
   #   - no brain (enabled=false + host empty): --h2agent-host is not passed.
   host: ""
   port: 8000
+  # HTTP/2 connections the gateway opens to its brain for the inbound requests
+  # (--h2agent-connections; each with its own thread, round-robin). One serializes
+  # every inbound request on one thread of each side.
+  connections: 4
   image:
     repository: ghcr.io/testillano/h2agent
     tag: latest

@@ -422,6 +422,9 @@ components:
               type: string
             port:
               type: integer
+            connections:
+              type: integer
+              description: HTTP/2 connections for the inbound requests (--h2agent-connections)
         http2ServerPort:
           type: integer
         adminPort:

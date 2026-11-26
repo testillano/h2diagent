@@ -159,6 +159,8 @@ spec:
             - {{ $brainHost | quote }}
             - "--h2agent-port"
             - {{ include "h2diagent.brainPort" . | quote }}
+            - "--h2agent-connections"
+            - {{ .Values.h2agent.connections | default 4 | quote }}
             {{- end }}
             - "--http2-server-port"
             - {{ .Values.http2ServerPort | quote }}

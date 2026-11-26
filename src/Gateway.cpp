@@ -393,20 +393,27 @@ void Gateway::start() {
     // Needed whenever we may RECEIVE Diameter requests to forward to h2agent.
     // That happens on the server leg (diameterPort>0) AND, for bidirectional
     // Diameter, on the client leg too (server-initiated RAR/DPR on the
-    // connection we opened, diameterPeerHost set). Uses a dedicated
-    // single-threaded io_context to avoid nghttp2 re-entrancy under load.
+    // connection we opened, diameterPeerHost set). --h2agent-connections links,
+    // each with a dedicated single-threaded io_context (no nghttp2 re-entrancy
+    // under load), taken round-robin: one connection would serialize every
+    // inbound request on one thread here and one I/O thread in h2agent.
     if (config_.h2agentPort > 0 && (config_.diameterPort > 0 || !config_.diameterPeerHost.empty())) {
-        h2clientWork_ = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
-            boost::asio::make_work_guard(h2clientIo_));
-        h2clientReconnectTimer_ = std::make_unique<boost::asio::steady_timer>(h2clientIo_);
-        h2clientReconnectBackoff_ = h2clientReconnectInitial_;
-
-        // Start the dedicated thread for the HTTP/2 client io_context, then
-        // initiate the first connection on that same thread. The session is only
-        // ever created/destroyed on this thread (connectH2Client), so it can be
-        // recreated safely on connection loss without cross-thread races.
-        h2clientThread_ = std::thread([this]() { h2clientIo_.run(); });
-        boost::asio::post(h2clientIo_, [this]() { connectH2Client(); });
+        const std::size_t links =
+            static_cast<std::size_t>(config_.h2agentConnections < 1 ? 1 : config_.h2agentConnections);
+        for (std::size_t i = 0; i < links; ++i) {
+            auto link = std::make_unique<H2agentLink>();
+            link->index = i;
+            link->work = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+                boost::asio::make_work_guard(link->io));
+            link->reconnectTimer = std::make_unique<boost::asio::steady_timer>(link->io);
+            link->reconnectBackoff = h2clientReconnectInitial_;
+            H2agentLink* l = link.get();
+            h2links_.push_back(std::move(link));
+            // The session is only ever created/destroyed on the link thread
+            // (connectH2Client), so it can be recreated safely on connection loss.
+            l->thread = std::thread([l]() { l->io.run(); });
+            boost::asio::post(l->io, [this, l]() { connectH2Client(*l); });
+        }
     }
 
     // --- HTTP/2 server for outbound triggers from h2agent ---
@@ -675,68 +682,79 @@ void Gateway::startAdminServer() {
 // ============================================================================
 // connectH2Client / scheduleH2ClientReconnect
 // HTTP/2 client to h2agent with automatic reconnection. Both run on the
-// h2clientIo_ thread (the only thread allowed to create/destroy the session).
+// link thread (the only thread allowed to create/destroy the link session).
 // ============================================================================
-void Gateway::connectH2Client() {
+void Gateway::connectH2Client(H2agentLink& link) {
     if (h2clientStopping_) return;
 
-    h2clientReconnectPending_ = false;
-    h2clientConnected_ = false;
+    link.reconnectPending = false;
+    link.connected = false;
 
     try {
         // Recreating the unique_ptr destroys any previous (dead) session; safe
-        // here because we are on the h2clientIo_ thread and never inside the
-        // session's own callback (reconnection is deferred via the timer).
-        h2clientSession_ = std::make_unique<nghttp2::asio_http2::client::session>(h2clientIo_, config_.h2agentHost,
-                                                                                  std::to_string(config_.h2agentPort));
+        // here because we are on the link thread and never inside the session's
+        // own callback (reconnection is deferred via the timer).
+        link.session = std::make_unique<nghttp2::asio_http2::client::session>(link.io, config_.h2agentHost,
+                                                                              std::to_string(config_.h2agentPort));
     } catch (const std::exception& e) {
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("Failed to create HTTP/2 client: %s", e.what()), ERT_FILE_LOCATION));
-        scheduleH2ClientReconnect();
+            ert::tracing::Logger::asString("Failed to create HTTP/2 client %zu: %s", link.index, e.what()),
+            ERT_FILE_LOCATION));
+        scheduleH2ClientReconnect(link);
         return;
     }
 
-    h2clientSession_->on_connect([this](auto) {
+    H2agentLink* l = &link;
+    link.session->on_connect([this, l](auto) {
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("HTTP/2 client connected to %s:%d", config_.h2agentHost.c_str(),
-                                           config_.h2agentPort),
+            ert::tracing::Logger::asString("HTTP/2 client %zu connected to %s:%d", l->index,
+                                           config_.h2agentHost.c_str(), config_.h2agentPort),
             ERT_FILE_LOCATION));
-        h2clientConnected_ = true;
-        h2clientReconnectBackoff_ = h2clientReconnectInitial_;  // reset backoff on success
+        l->connected = true;
+        l->reconnectBackoff = h2clientReconnectInitial_;  // reset backoff on success
     });
 
-    h2clientSession_->on_error([this](const boost::system::error_code& ec) {
+    link.session->on_error([this, l](const boost::system::error_code& ec) {
         LOGWARNING(ert::tracing::Logger::warning(
-            ert::tracing::Logger::asString("HTTP/2 client error to %s:%d: %s", config_.h2agentHost.c_str(),
-                                           config_.h2agentPort, ec.message().c_str()),
+            ert::tracing::Logger::asString("HTTP/2 client %zu error to %s:%d: %s", l->index,
+                                           config_.h2agentHost.c_str(), config_.h2agentPort, ec.message().c_str()),
             ERT_FILE_LOCATION));
-        h2clientConnected_ = false;
-        scheduleH2ClientReconnect();
+        l->connected = false;
+        scheduleH2ClientReconnect(*l);
     });
 }
 
-void Gateway::scheduleH2ClientReconnect() {
+void Gateway::scheduleH2ClientReconnect(H2agentLink& link) {
     if (h2clientStopping_) return;
-    if (h2clientReconnectPending_) return;  // a reconnection is already armed
-    if (!h2clientReconnectTimer_) return;
+    if (link.reconnectPending) return;  // a reconnection is already armed
+    if (!link.reconnectTimer) return;
 
-    h2clientReconnectPending_ = true;
-    const auto delay = h2clientReconnectBackoff_;
+    link.reconnectPending = true;
+    const auto delay = link.reconnectBackoff;
 
-    LOGWARNING(
-        ert::tracing::Logger::warning(ert::tracing::Logger::asString("Reconnecting HTTP/2 client to h2agent in %lld ms",
-                                                                     static_cast<long long>(delay.count())),
-                                      ERT_FILE_LOCATION));
+    LOGWARNING(ert::tracing::Logger::warning(
+        ert::tracing::Logger::asString("Reconnecting HTTP/2 client %zu to h2agent in %lld ms", link.index,
+                                       static_cast<long long>(delay.count())),
+        ERT_FILE_LOCATION));
 
-    h2clientReconnectTimer_->expires_after(delay);
-    h2clientReconnectTimer_->async_wait([this](const boost::system::error_code& ec) {
+    H2agentLink* l = &link;
+    link.reconnectTimer->expires_after(delay);
+    link.reconnectTimer->async_wait([this, l](const boost::system::error_code& ec) {
         if (ec) return;  // timer cancelled (shutdown)
         if (h2clientStopping_) return;
-        connectH2Client();
+        connectH2Client(*l);
     });
 
     // Exponential backoff, capped at the configured maximum.
-    h2clientReconnectBackoff_ = std::min(h2clientReconnectBackoff_ * 2, h2clientReconnectMax_);
+    link.reconnectBackoff = std::min(link.reconnectBackoff * 2, h2clientReconnectMax_);
+}
+
+Gateway::H2agentLink* Gateway::pickH2agentLink() {
+    std::vector<bool> connected;
+    connected.reserve(h2links_.size());
+    for (const auto& link : h2links_) connected.push_back(link->connected.load());
+    const std::size_t i = helpers::pickConnected(connected, h2linkCursor_);
+    return i == helpers::NoServerConnection ? nullptr : h2links_[i].get();
 }
 
 // ============================================================================
@@ -774,19 +792,20 @@ void Gateway::stop() {
         h2server_.reset();
     }
 
-    if (h2clientSession_) {
-        h2clientSession_->shutdown();
-        h2clientSession_.reset();
+    for (auto& link : h2links_) {
+        if (link->session) {
+            link->session->shutdown();
+            link->session.reset();
+        }
+        if (link->work) {
+            link->work.reset();  // release work guard
+            link->io.stop();
+        }
+        if (link->thread.joinable()) link->thread.join();
+        // The link thread is stopped and joined: safe to destroy its reconnect timer.
+        link->reconnectTimer.reset();
     }
-    if (h2clientWork_) {
-        h2clientWork_.reset();  // release work guard
-        h2clientIo_.stop();
-    }
-    if (h2clientThread_.joinable()) {
-        h2clientThread_.join();
-    }
-    // The io thread is stopped and joined: safe to destroy the reconnect timer.
-    h2clientReconnectTimer_.reset();
+    h2links_.clear();
     gaugesTimer_.reset();
 
     if (metrics_) {
@@ -912,14 +931,15 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     std::string bodyStr = jsonBody.dump();
 
     // 3. Send HTTP/2 request to h2agent and handle response.
-    // Check only the atomic here: the session pointer is mutated on the
-    // h2clientIo_ thread (reconnection), so it must not be dereferenced from
-    // this (Diameter) thread. The null-check on the session is done inside the
-    // posted lambda, which runs on the h2clientIo_ thread.
+    // Pick a connected link by its atomic only: the session pointer is mutated on
+    // the link thread (reconnection), so it must not be dereferenced from this
+    // (Diameter) thread. The null-check on the session is done inside the posted
+    // lambda, which runs on the link thread.
     auto peerPtr = peer;  // capture for lambda
+    H2agentLink* link = pickH2agentLink();
 
     // h2agent unreachable: answer 5012 now instead of leaving the peer to time out.
-    if (!h2clientConnected_.load()) {
+    if (!link) {
         LOGWARNING(ert::tracing::Logger::warning(
             "HTTP/2 client not connected to h2agent, sending DIAMETER_UNABLE_TO_COMPLY", ERT_FILE_LOCATION));
         sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
@@ -938,8 +958,8 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     auto h_ptr = std::make_shared<nghttp2::asio_http2::header_map>(std::move(h));
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
 
-    boost::asio::post(h2clientIo_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, h_ptr,
-                                    bodyStr_ptr, sessionId, fullUri_copy = std::move(fullUri)]() {
+    boost::asio::post(link->io, [this, link, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
+                                 h_ptr, bodyStr_ptr, sessionId, fullUri_copy = std::move(fullUri)]() {
         // Not forwarded: answer 5012 from the Diameter io_context (where the
         // other answers are sent from), not from this HTTP/2 client thread.
         auto unableToComply = [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
@@ -949,7 +969,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                     sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
                 });
         };
-        if (!h2clientSession_) {
+        if (!link->session) {
             LOGWARNING(ert::tracing::Logger::warning(
                 "HTTP/2 client session not available (reconnecting), sending DIAMETER_UNABLE_TO_COMPLY",
                 ERT_FILE_LOCATION));
@@ -957,7 +977,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
             return;
         }
         boost::system::error_code ec;
-        auto req = h2clientSession_->submit(ec, "POST", fullUri_copy, *bodyStr_ptr, std::move(*h_ptr));
+        auto req = link->session->submit(ec, "POST", fullUri_copy, *bodyStr_ptr, std::move(*h_ptr));
 
         if (ec || !req) {
             LOGWARNING(ert::tracing::Logger::warning(

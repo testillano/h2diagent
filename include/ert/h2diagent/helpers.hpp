@@ -286,6 +286,19 @@ constexpr std::size_t NoServerConnection = static_cast<std::size_t>(-1);
 // Diameter the peer is its Origin-Host, not one connection, so any of its
 // connections is a valid route: they are taken round-robin. Returns the index
 // in 'connections', or NoServerConnection.
+// Index of the next connected slot, round-robin from the cursor (one atomic step
+// per call), scanning forward so a momentarily disconnected slot is skipped.
+// Returns NoServerConnection when none is connected (or there are none).
+inline std::size_t pickConnected(const std::vector<bool>& connected, std::atomic<std::size_t>& cursor) {
+    const std::size_t n = connected.size();
+    if (n == 0) return NoServerConnection;
+    const std::size_t start = roundRobinIndex(cursor, n);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (connected[(start + i) % n]) return (start + i) % n;
+    }
+    return NoServerConnection;
+}
+
 inline std::size_t pickServerConnection(const std::vector<ServerConnection>& connections,
                                         const std::string& destinationHost, std::atomic<std::size_t>& cursor) {
     auto sameIdentity = [](const std::string& a, const std::string& b) {

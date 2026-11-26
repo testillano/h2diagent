@@ -102,7 +102,9 @@ void usage(const char* name) {
         << "  --diameter-client-key-password <pass>  Password for the client key (optional).\n\n"
         << "HTTP/2 (towards h2agent):\n"
         << "  --h2agent-host <host>           h2agent traffic server host (default: localhost)\n"
-        << "  --h2agent-port <port>           h2agent traffic server port (default: 8000)\n\n"
+        << "  --h2agent-port <port>           h2agent traffic server port (default: 8000)\n"
+        << "  --h2agent-connections <n>       HTTP/2 connections to h2agent for the inbound requests,\n"
+        << "                                  each with its own thread, round-robin (default: 4)\n\n"
         << "HTTP/2 (for outbound from h2agent):\n"
         << "  --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005).\n"
         << "                                  Without --diameter-peer-host, its requests (e.g. RAR)\n"
@@ -190,6 +192,7 @@ int main(int argc, char* argv[]) {
         {"diameter-client-key-password", required_argument, nullptr, 0},
         {"h2agent-host", required_argument, nullptr, 0},
         {"h2agent-port", required_argument, nullptr, 0},
+        {"h2agent-connections", required_argument, nullptr, 0},
         {"http2-server-port", required_argument, nullptr, 0},
         {"workers", required_argument, nullptr, 0},
         {"http2-server-threads", required_argument, nullptr, 0},
@@ -280,7 +283,13 @@ int main(int argc, char* argv[]) {
                     config.h2agentHost = optarg;
                 else if (name == "h2agent-port")
                     config.h2agentPort = std::stoi(optarg);
-                else if (name == "http2-server-port")
+                else if (name == "h2agent-connections") {
+                    config.h2agentConnections = std::stoi(optarg);
+                    if (config.h2agentConnections < 1) {
+                        std::cerr << "Invalid --h2agent-connections: must be >= 1" << std::endl;
+                        return 1;
+                    }
+                } else if (name == "http2-server-port")
                     config.http2ServerPort = std::stoi(optarg);
                 else if (name == "workers")
                     config.workers = std::stoi(optarg);
@@ -423,7 +432,8 @@ int main(int argc, char* argv[]) {
         std::cout << std::endl;
         for (const auto& p : config.dictionaryPaths) std::cout << "  " << p << std::endl;
     }
-    std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << std::endl;
+    std::cout << "H2agent: " << config.h2agentHost << ":" << config.h2agentPort << " (" << config.h2agentConnections
+              << " connections)" << std::endl;
     std::cout << "HTTP/2 server port (outbound): " << config.http2ServerPort << " ("
               << ert::h2diagent::helpers::http2ServerThreads(config) << " threads)" << std::endl;
     std::cout << "Admin port: " << (config.adminPort > 0 ? std::to_string(config.adminPort) : "disabled") << std::endl;

@@ -242,7 +242,7 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
     }
     diameter["ceaResultCode"] = c.ceaResultCode < 0 ? nlohmann::json("none") : nlohmann::json(c.ceaResultCode);
     return {{"diameter", diameter},
-            {"h2agent", {{"host", c.h2agentHost}, {"port", c.h2agentPort}}},
+            {"h2agent", {{"host", c.h2agentHost}, {"port", c.h2agentPort}, {"connections", c.h2agentConnections}}},
             {"http2ServerPort", c.http2ServerPort},
             {"http2ServerThreads", helpers::http2ServerThreads(c)},
             {"adminPort", c.adminPort},

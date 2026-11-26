@@ -112,6 +112,10 @@ struct GatewayConfig {
     // HTTP/2 client (towards h2agent)
     std::string h2agentHost{"localhost"};
     uint16_t h2agentPort{8000};
+    // HTTP/2 connections towards h2agent for the inbound requests (each with its
+    // own thread, taken round-robin). One connection serializes every inbound
+    // request on one gateway thread and one h2agent I/O thread.
+    int h2agentConnections{4};
 
     // HTTP/2 server (for outbound triggers from h2agent): h2agent ports + 5
     // (h2agent 8000 / 8074 / 8080, h2diagent 8005 / 8079 / 8085) so both fit in a pod.
@@ -229,12 +233,31 @@ class Gateway {
     // (no --diameter-peer-host) but a Diameter server listening.
     bool outboundOnServerLeg() const { return !diameterClientPool_ && diameterServer_; }
 
-    // (Re)connect the HTTP/2 client to h2agent. Creates a fresh nghttp2 session.
-    // Must run on the h2clientIo_ thread (the only thread that mutates the session).
-    void connectH2Client();
-    // Schedule a backoff reconnection of the HTTP/2 client to h2agent.
-    // Must run on the h2clientIo_ thread.
-    void scheduleH2ClientReconnect();
+    // One HTTP/2 client connection towards h2agent (inbound requests), with its own
+    // single-threaded io_context to avoid nghttp2 re-entrancy: the session is only
+    // created / destroyed / used on that thread. Members other than 'connected'
+    // and 'index' are only touched on it.
+    struct H2agentLink {
+        std::size_t index{0};
+        boost::asio::io_context io{1};
+        std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> work;
+        std::thread thread;
+        std::unique_ptr<nghttp2::asio_http2::client::session> session;
+        std::atomic<bool> connected{false};
+        // The nghttp2 client session does not reconnect on its own: on connection
+        // loss / failure it is recreated with an exponential backoff.
+        std::unique_ptr<boost::asio::steady_timer> reconnectTimer;
+        std::chrono::milliseconds reconnectBackoff{1000};
+        bool reconnectPending{false};
+    };
+
+    // (Re)connect a link to h2agent (fresh nghttp2 session). On the link thread.
+    void connectH2Client(H2agentLink& link);
+    // Schedule a backoff reconnection of a link. On the link thread.
+    void scheduleH2ClientReconnect(H2agentLink& link);
+    // Next link for an inbound request: round-robin, preferring a connected one;
+    // nullptr when none is connected.
+    H2agentLink* pickH2agentLink();
 
     // Admin interface (/admin/v1, see Admin.hpp) on --admin-port.
     void startAdminServer();
@@ -282,23 +305,13 @@ class Gateway {
     diametercodec::codec::DecodeOptions decodeOptions_;
     diametercodec::stack::Dictionary defaultDictionary_;  // fallback for unknown appId
 
-    // HTTP/2 client session (towards h2agent)
-    // Uses its own single-threaded io_context to avoid nghttp2 re-entrancy
-    boost::asio::io_context h2clientIo_{1};
-    std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> h2clientWork_;
-    std::thread h2clientThread_;
-    std::unique_ptr<nghttp2::asio_http2::client::session> h2clientSession_;
-    std::atomic<bool> h2clientConnected_{false};
+    // HTTP/2 client connections towards h2agent (inbound requests)
+    std::vector<std::unique_ptr<H2agentLink>> h2links_;
+    std::atomic<std::size_t> h2linkCursor_{0};
 
-    // HTTP/2 client reconnection to h2agent. The nghttp2 client session does not
-    // reconnect on its own, so on connection loss/failure we recreate it with an
-    // exponential backoff. Timer and flags below are only touched on the
-    // h2clientIo_ thread (except h2clientStopping_, which is atomic).
-    std::unique_ptr<boost::asio::steady_timer> h2clientReconnectTimer_;
-    std::chrono::milliseconds h2clientReconnectBackoff_{1000};
+    // Reconnection backoff of every link (initial, max); stopping guards them all.
     static constexpr std::chrono::milliseconds h2clientReconnectInitial_{1000};
     static constexpr std::chrono::milliseconds h2clientReconnectMax_{10000};
-    bool h2clientReconnectPending_{false};
     std::atomic<bool> h2clientStopping_{false};
 
     // HTTP/2 server (for outbound triggers)

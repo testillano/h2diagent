@@ -441,6 +441,43 @@ TEST(Helpers, RoundRobinIndex_ZeroSizeSafe) {
 }
 
 // =============================================================================
+// pickConnected (inbound HTTP/2 links to h2agent) -- pure, used by Gateway
+// =============================================================================
+TEST(Helpers, PickConnected_NoSlots) {
+    std::atomic<std::size_t> cursor{0};
+    EXPECT_EQ(pickConnected({}, cursor), NoServerConnection);
+}
+
+TEST(Helpers, PickConnected_NoneConnected) {
+    std::atomic<std::size_t> cursor{0};
+    EXPECT_EQ(pickConnected({false, false, false}, cursor), NoServerConnection);
+}
+
+TEST(Helpers, PickConnected_RoundRobinAllConnected) {
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<bool> c = {true, true, true, true};
+    for (int round = 0; round < 2; ++round)
+        for (std::size_t i = 0; i < c.size(); ++i) EXPECT_EQ(pickConnected(c, cursor), i);
+}
+
+TEST(Helpers, PickConnected_SkipsDisconnected) {
+    // a reconnecting link is skipped, the next connected one is taken
+    std::atomic<std::size_t> cursor{0};
+    const std::vector<bool> c = {true, false, true};
+    EXPECT_EQ(pickConnected(c, cursor), 0u);  // start 0
+    EXPECT_EQ(pickConnected(c, cursor), 2u);  // start 1 (down) -> 2
+    EXPECT_EQ(pickConnected(c, cursor), 2u);  // start 2
+    EXPECT_EQ(pickConnected(c, cursor), 0u);  // start 0
+}
+
+TEST(Helpers, PickConnected_SingleSlot) {
+    std::atomic<std::size_t> cursor{0};
+    EXPECT_EQ(pickConnected({true}, cursor), 0u);
+    EXPECT_EQ(pickConnected({true}, cursor), 0u);
+    EXPECT_EQ(pickConnected({false}, cursor), NoServerConnection);
+}
+
+// =============================================================================
 // http2ServerThreads (outbound HTTP/2 server threads) -- pure, used by Gateway
 // =============================================================================
 namespace {

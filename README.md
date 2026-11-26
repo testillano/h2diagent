@@ -720,6 +720,8 @@ Diameter TLS (TCP only; SCTP/DTLS not supported -- see README):
 HTTP/2 (towards h2agent):
   --h2agent-host <host>           h2agent traffic server host (default: localhost)
   --h2agent-port <port>           h2agent traffic server port (default: 8000)
+  --h2agent-connections <n>       HTTP/2 connections to h2agent for the inbound requests,
+                                  each with its own thread, round-robin (default: 4)
 
 HTTP/2 (for outbound from h2agent):
   --http2-server-port <port>      HTTP/2 listen port for h2agent client (default: 8005).

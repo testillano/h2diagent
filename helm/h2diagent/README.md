@@ -42,6 +42,7 @@ server/PCRF mock-brain case turns the sidecar on.
 | `h2agent.enabled` | `false` | Run the h2agent mock-brain as a sidecar in this pod (server/PCRF case). When `false`, the gateway is a single-container pure translator. |
 | `h2agent.host` | `""` | External brain to dial (a Service DNS of an h2agent in another pod) when `enabled=false`. Empty = run with no brain (valid for a pure client/translator). |
 | `h2agent.port` | `8000` | Traffic port of the external brain (used with `h2agent.host`). |
+| `h2agent.connections` | `4` | HTTP/2 connections to the brain for the inbound requests (`--h2agent-connections`), each with its own thread, round-robin. |
 | `role` | `server` | Diameter role: `server` (listen), `client` (dial), `both`. |
 | `diameter.serverPort` | `3868` | Inbound Diameter listener (server/both; `0` disables). |
 | `diameter.peerHost` / `peerPort` | `""` / `3868` | Remote peer dialed in client/both mode. |
