@@ -269,6 +269,21 @@ inline int http2ServerThreads(const Config& c) {
     return hc > 0 ? static_cast<int>(hc) : 1;
 }
 
+// Threads (one io_context each) of the Diameter client connections: the
+// configured number, else one per connection up to the workers (more threads
+// than connections would idle), never less than 1.
+template <class Config>
+inline int diameterIoThreads(const Config& c) {
+    if (c.diameterIoThreads > 0) return c.diameterIoThreads;
+    const int connections = c.diameterConnections > 0 ? c.diameterConnections : 1;
+    int workers = c.workers;
+    if (workers <= 0) {
+        const unsigned hc = std::thread::hardware_concurrency();
+        workers = hc > 0 ? static_cast<int>(hc) : 1;
+    }
+    return connections < workers ? connections : workers;
+}
+
 // A server-leg connection, as seen by pickServerConnection.
 struct ServerConnection {
     bool open{false};        // capabilities exchanged (Peer::State::Open)

@@ -509,6 +509,48 @@ TEST(Helpers, Http2ServerThreads_NegativeIgnored) {
 }
 
 // =============================================================================
+// diameterIoThreads (threads of the Diameter client connections) -- pure
+// =============================================================================
+namespace {
+struct DiameterIoConfig {
+    int diameterIoThreads{0};
+    int diameterConnections{1};
+    int workers{0};
+};
+}  // namespace
+
+TEST(Helpers, DiameterIoThreads_Explicit) {
+    // the option wins, even above the connections (extra threads just idle)
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{4, 36, 8}), 4);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{8, 2, 4}), 8);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{1, 36, 36}), 1);
+}
+
+TEST(Helpers, DiameterIoThreads_DefaultsToOnePerConnection) {
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 6, 36}), 6);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 1, 36}), 1);  // the default single connection
+}
+
+TEST(Helpers, DiameterIoThreads_CappedByWorkers) {
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 36, 8}), 8);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 8, 8}), 8);
+}
+
+TEST(Helpers, DiameterIoThreads_WorkersDefaultToHardwareConcurrency) {
+    const unsigned hc = std::thread::hardware_concurrency();
+    const int cap = hc > 0 ? static_cast<int>(hc) : 1;
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 100000, 0}), cap);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 1, 0}), 1);
+}
+
+TEST(Helpers, DiameterIoThreads_NonPositiveValuesNeverZero) {
+    // defensive: 0 / negative connections count as 1, a negative option is ignored
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{0, 0, 4}), 1);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{-3, -1, -1}), 1);
+    EXPECT_EQ(diameterIoThreads(DiameterIoConfig{-3, 5, 2}), 2);
+}
+
+// =============================================================================
 // pickServerConnection (server-leg outbound requests) -- pure, used by Gateway
 // =============================================================================
 TEST(Helpers, PickServerConnection_NoConnections) {

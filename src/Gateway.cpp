@@ -346,8 +346,9 @@ void Gateway::start() {
         // local interfaces (docker0, bridges) that stall the SCTP handshake.
         peerConfig.localAddress = config_.diameterClientLocalHost;
 
+        diameterIo_ = std::make_unique<IoContextPool>(static_cast<std::size_t>(helpers::diameterIoThreads(config_)));
         diameterClientPool_ = std::make_unique<DiameterClientPool>(
-            io_, peerConfig, config_.diameterClientTransport,
+            diameterIo_->contexts(), peerConfig, config_.diameterClientTransport,
             static_cast<std::size_t>(config_.diameterConnections < 1 ? 1 : config_.diameterConnections));
         diameterClientPool_->enableMetrics(metrics_, config_.productName);
         // Bidirectional Diameter (RFC 6733): after CER/CEA the remote peer may
@@ -377,15 +378,18 @@ void Gateway::start() {
         // graceful degradation (N-1 keep serving while one recovers).
         diameterClientPool_->setReconnectEnabled(true);
         diameterClientPool_->setReconnectBackoff(std::chrono::milliseconds(1000), std::chrono::milliseconds(10000));
+        // Queued only: the client threads start at the end of start(), once every
+        // component a client callback reaches (h2agent links, server leg) exists.
         diameterClientPool_->connectAll(config_.diameterPeerHost, config_.diameterPeerPort);
 
         LOGWARNING(ert::tracing::Logger::warning(
             ert::tracing::Logger::asString(
-                "Diameter client connecting to %s:%d [%s] (%zu connection%s)", config_.diameterPeerHost.c_str(),
-                config_.diameterPeerPort,
+                "Diameter client connecting to %s:%d [%s] (%zu connection%s, %zu thread%s)",
+                config_.diameterPeerHost.c_str(), config_.diameterPeerPort,
                 (clientTls.enabled && config_.diameterClientTransport == diametercomm::Transport::TCP) ? "TLS"
                                                                                                        : "plain",
-                diameterClientPool_->size(), diameterClientPool_->size() == 1 ? "" : "s"),
+                diameterClientPool_->size(), diameterClientPool_->size() == 1 ? "" : "s", diameterIo_->size(),
+                diameterIo_->size() == 1 ? "" : "s"),
             ERT_FILE_LOCATION));
     }
 
@@ -517,6 +521,9 @@ void Gateway::start() {
         refreshConnectionGauges();
         scheduleConnectionGauges();
     }
+
+    // Diameter client threads last: their callbacks use every component above.
+    if (diameterIo_) diameterIo_->start();
 
     LOGWARNING(ert::tracing::Logger::warning("h2diagent gateway started", ERT_FILE_LOCATION));
 }
@@ -776,14 +783,16 @@ void Gateway::stop() {
         adminServer_.reset();
     }
 
+    // Client threads first: their cross-leg callbacks reach the server leg.
+    if (diameterClientPool_) {
+        diameterClientPool_->disconnectAll(0);
+        // Join the client threads: no client handler runs from now on.
+        if (diameterIo_) diameterIo_->stop();
+    }
+
     if (diameterServer_) {
         diameterServer_->shutdown(0);
         diameterServer_.reset();
-    }
-
-    if (diameterClientPool_) {
-        diameterClientPool_->disconnectAll(0);
-        diameterClientPool_.reset();
     }
 
     if (h2server_) {
@@ -807,6 +816,12 @@ void Gateway::stop() {
     }
     h2links_.clear();
     gaugesTimer_.reset();
+
+    // Last, once no thread can reach them (the HTTP/2 server sends through the
+    // clients, the links post the inbound answers to the client contexts): the
+    // clients, then the io_contexts their sockets and timers belong to.
+    diameterClientPool_.reset();
+    diameterIo_.reset();
 
     if (metrics_) {
         delete metrics_;
@@ -938,6 +953,15 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     auto peerPtr = peer;  // capture for lambda
     H2agentLink* link = pickH2agentLink();
 
+    // Where the answer is built and the inbound timer runs: the thread of the
+    // connection the request came on (a pooled client has its own io_context),
+    // so the answers of different connections do not share one scheduler. The
+    // server leg runs on io_.
+    boost::asio::io_context* replyIo = &io_;
+    if (fromClient && originatingClient && diameterClientPool_) {
+        if (auto* io = diameterClientPool_->contextOf(originatingClient)) replyIo = io;
+    }
+
     // h2agent unreachable: answer 5012 now instead of leaving the peer to time out.
     if (!link) {
         LOGWARNING(ert::tracing::Logger::warning(
@@ -959,13 +983,13 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
     auto bodyStr_ptr = std::make_shared<std::string>(std::move(bodyStr));
 
     boost::asio::post(link->io, [this, link, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
-                                 h_ptr, bodyStr_ptr, sessionId, fullUri_copy = std::move(fullUri)]() {
+                                 h_ptr, bodyStr_ptr, sessionId, replyIo, fullUri_copy = std::move(fullUri)]() {
         // Not forwarded: answer 5012 from the Diameter io_context (where the
         // other answers are sent from), not from this HTTP/2 client thread.
-        auto unableToComply = [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
-                               sessionId]() {
+        auto unableToComply = [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId,
+                               replyIo]() {
             boost::asio::post(
-                io_, [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId]() {
+                *replyIo, [this, peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId]() {
                     sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e, sessionId);
                 });
         };
@@ -999,7 +1023,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         auto timedOut = std::make_shared<std::atomic<bool>>(false);
 
         // Inbound timeout: if h2agent doesn't respond in time, send DIAMETER_UNABLE_TO_COMPLY
-        auto timer = std::make_shared<boost::asio::steady_timer>(io_);
+        auto timer = std::make_shared<boost::asio::steady_timer>(*replyIo);
         timer->expires_after(std::chrono::milliseconds(config_.diameterTimeoutMs));
         timer->async_wait([this, timer, timedOut, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
                            sessionId](const boost::system::error_code& ec) {
@@ -1016,21 +1040,23 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
         });
 
         req->on_response([this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
-                          timedOut, timer, sessionId](const nghttp2::asio_http2::client::response& res) {
+                          timedOut, timer, sessionId, replyIo](const nghttp2::asio_http2::client::response& res) {
             int statusCode = res.status_code();
 
             res.on_data([this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId, responseBody,
-                         timedOut, timer, statusCode, sessionId](const uint8_t* data, std::size_t len) {
+                         timedOut, timer, statusCode, sessionId, replyIo](const uint8_t* data, std::size_t len) {
                 if (len > 0) {
                     responseBody->append(reinterpret_cast<const char*>(data), len);
                     return;
                 }
 
                 // End of response body - post processing outside nghttp2 callback to avoid re-entrancy
-                boost::asio::post(io_, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
-                                        responseBody, timedOut, timer, statusCode, sessionId]() {
-                    timer->cancel();               // cancel the timeout
-                    if (timedOut->load()) return;  // already sent error answer
+                boost::asio::post(*replyIo, [this, peerPtr, fromClient, originatingClient, hbh, e2e, commandCode, appId,
+                                             responseBody, timedOut, timer, statusCode, sessionId]() {
+                    timer->cancel();  // cancel the timeout
+                    // Exactly one answer: an expiry already queued when cancelled
+                    // would otherwise send a 5012 on top of this answer.
+                    if (timedOut->exchange(true)) return;
 
                     LOGINFORMATIONAL(ert::tracing::Logger::informational(
                         ert::tracing::Logger::asString("h2agent responded %d (%zu bytes)", statusCode,
@@ -1115,7 +1141,7 @@ void Gateway::onDiameterRequest(std::shared_ptr<diametercomm::Peer> peer, diamet
                         sendUnableToComply(peerPtr, fromClient, originatingClient, commandCode, appId, hbh, e2e,
                                            sessionId);
                     }
-                });  // end io_.post() for response processing
+                });  // end post(*replyIo) for response processing
             });
         });
     });  // end io_service().post()

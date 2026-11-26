@@ -75,7 +75,11 @@ void usage(const char* name) {
         << "                                  robustness/headroom. TCP only: with sctp, N>1 fails fast\n"
         << "                                  (SCTP uses a single association; multi-streaming not\n"
         << "                                  implemented). The peer must accept N connections per\n"
-        << "                                  origin-host.\n\n"
+        << "                                  origin-host.\n"
+        << "  --diameter-io-threads <n>       Threads of those connections, each with its own\n"
+        << "                                  io_context; the connections are spread over them\n"
+        << "                                  round-robin (default: one per connection, up to\n"
+        << "                                  --workers).\n\n"
         << "  --diameter-client-local-host <ip>  Local source address to bind the outbound Diameter\n"
         << "                                  client to. For SCTP this single-homes the association so\n"
         << "                                  the INIT advertises ONLY this address (avoids non-routable\n"
@@ -177,6 +181,7 @@ int main(int argc, char* argv[]) {
         {"diameter-server-transport", required_argument, nullptr, 0},
         {"diameter-client-transport", required_argument, nullptr, 0},
         {"diameter-connections", required_argument, nullptr, 0},
+        {"diameter-io-threads", required_argument, nullptr, 0},
         {"diameter-client-local-host", required_argument, nullptr, 0},
         {"diameter-server-local-host", required_argument, nullptr, 0},
         {"sctp-heartbeat-interval-ms", required_argument, nullptr, 0},
@@ -253,6 +258,12 @@ int main(int argc, char* argv[]) {
                     config.diameterClientTransport = toTransport(norm);
                 } else if (name == "diameter-connections") {
                     config.diameterConnections = std::stoi(optarg);
+                } else if (name == "diameter-io-threads") {
+                    config.diameterIoThreads = std::stoi(optarg);
+                    if (config.diameterIoThreads < 1) {
+                        std::cerr << "Invalid --diameter-io-threads: must be >= 1" << std::endl;
+                        return 1;
+                    }
                 } else if (name == "diameter-server-local-host") {
                     config.diameterServerLocalHost = optarg;
                 } else if (name == "sctp-heartbeat-interval-ms") {
@@ -414,7 +425,8 @@ int main(int argc, char* argv[]) {
     if (!config.diameterPeerHost.empty()) {
         std::cout << "Diameter peer: " << config.diameterPeerHost << ":" << config.diameterPeerPort << std::endl;
         std::cout << "Diameter client transport: " << transportName(config.diameterClientTransport) << std::endl;
-        std::cout << "Diameter client connections: " << config.diameterConnections << std::endl;
+        std::cout << "Diameter client connections: " << config.diameterConnections << " ("
+                  << ert::h2diagent::helpers::diameterIoThreads(config) << " threads)" << std::endl;
         if (config.diameterClientTransport == ert::diametercomm::Transport::SCTP &&
             (config.sctp.heartbeatIntervalMs || config.sctp.pathMaxRetrans || !config.sctp.primaryPeerAddress.empty()))
             std::cout << "SCTP heartbeat interval (ms): " << config.sctp.heartbeatIntervalMs

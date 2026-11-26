@@ -1,6 +1,7 @@
 add_executable(unit-test
     helpers_test.cpp
     diameterClientPool_test.cpp
+    ioContextPool_test.cpp
     decodeAs_test.cpp
     admin_test.cpp
     capabilitiesAvps_test.cpp

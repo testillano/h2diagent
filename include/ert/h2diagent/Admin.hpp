@@ -230,6 +230,7 @@ inline nlohmann::json configurationJson(const GatewayConfig& c,
                             {"port", c.diameterPeerPort},
                             {"transport", transportName(c.diameterClientTransport)},
                             {"connections", c.diameterConnections},
+                            {"ioThreads", helpers::diameterIoThreads(c)},
                             {"localHost", c.diameterClientLocalHost.empty() ? "auto" : c.diameterClientLocalHost},
                             {"tls", c.secureDiameterClient}};
     }

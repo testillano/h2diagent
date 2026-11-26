@@ -10,6 +10,7 @@ connection snapshot over real local connections, and the state gauge values.
 #include <ert/diametercomm/DiameterServer.hpp>
 #include <ert/h2diagent/Admin.hpp>
 #include <ert/h2diagent/DiameterClientPool.hpp>
+#include <thread>
 
 using ert::diametercomm::DiameterServer;
 using ert::diametercomm::Peer;
@@ -123,6 +124,8 @@ TEST(Admin, ConfigurationHasNoSecrets) {
     EXPECT_EQ(j["diameter"]["originHost"], "gw.example.com");
     EXPECT_EQ(j["diameter"]["serverTls"], true);
     EXPECT_EQ(j["diameter"]["peer"]["connections"], 2);
+    // resolved: one per connection (unless the machine has a single core)
+    EXPECT_EQ(j["diameter"]["peer"]["ioThreads"], std::thread::hardware_concurrency() <= 1 ? 1 : 2);
     EXPECT_EQ(j["diameter"]["peer"]["localHost"], "auto");
     EXPECT_EQ(j["diameter"]["dictionaries"][0]["applicationId"], 16777238);
     EXPECT_EQ(j["diameter"]["decodeAs"]["Framed-IP-Address"], "ipv4");

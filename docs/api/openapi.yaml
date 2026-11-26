@@ -410,6 +410,9 @@ components:
                   enum: [tcp, sctp]
                 connections:
                   type: integer
+                ioThreads:
+                  type: integer
+                  description: Threads of those connections, one io_context each (--diameter-io-threads, default one per connection up to the workers)
                 localHost:
                   type: string
                   description: Local source address, or "auto"

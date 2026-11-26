@@ -47,6 +47,7 @@ server/PCRF mock-brain case turns the sidecar on.
 | `diameter.serverPort` | `3868` | Inbound Diameter listener (server/both; `0` disables). |
 | `diameter.peerHost` / `peerPort` | `""` / `3868` | Remote peer dialed in client/both mode. |
 | `diameter.connections` | `1` | Outbound connections to the peer (`--diameter-connections`, client/both). `N>1` = round-robin pool, TCP only. |
+| `diameter.ioThreads` | `0` | Threads of those connections (`--diameter-io-threads`), each with its own io_context; `0` = the gateway default (one per connection, up to the workers). |
 | `diameter.decodeAs` | `{}` | AVP name -> readable form of its inbound OctetString bytes (`--decode-as`, see the project README). Empty = hex. |
 | `diameter.cer` / `diameter.cea` | `{}` / `{}` | Extra AVPs of the CER sent / the CEA answered (`--cer` / `--cea`), AVP name -> value in the gateway mapping (e.g. `Supported-Vendor-Id: [10415]`). The AVPs built from the options win (see the project README). |
 | `diameter.serverLocalHost` / `clientLocalHost` | `0.0.0.0` / `""` | Listener / client local address(es); a comma separated list multihomes the SCTP association (see the project README). |

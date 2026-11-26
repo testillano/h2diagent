@@ -14,25 +14,164 @@ It translates Diameter messages to/from JSON over HTTP/2, allowing h2agent's ful
 ## Architecture
 
 ```
-                    +----------------------------------+
-                    |          h2diagent               |
-                    |                                  |
-  SUT <--Diameter-->|  Diameter server (:3868)         |
-                    |  Diameter client (-> SUT)        |
-                    |                                  |
-                    |  HTTP/2 client  (-> h2agent)     |<-- inbound Diameter
-                    |  HTTP/2 server  (:8005)          |<-- outbound Diameter
-                    |  Admin API      (:8079)          |
-                    |  Prometheus     (:8085)          |
-                    +----------------------------------+
-                                    | HTTP/2
-                    +----------------------------------+
-                    |           h2agent                |
-                    |  Traffic server (:8000) <- mock  |
-                    |  Traffic client -> h2diagent     |
-                    |  Admin API (:8074)               |
-                    +----------------------------------+
++----------------------------------------------------------------------------+
+| h2agent (the brain)                                                        |
+|   traffic server: inbound requests        traffic client: outbound requests|
++----------------------------------------------------------------------------+
+         ^ HTTP/2 POST                                  | HTTP/2 POST
+         | (Diameter answer as JSON response)           | (answer in the response)
+         |                                              v
++----------------------------------------------------------------------------+
+| h2diagent                                                                  |
+|  +----------------------------------+  +--------------------------------+  |
+|  | h2agent links                    |  | outbound HTTP/2 server         |  |
+|  |  to --h2agent-host:-port (:8000) |  |  --http2-server-port (8005)    |  |
+|  |  --h2agent-connections (4)       |  |  --http2-server-threads        |  |
+|  |  1 HTTP/2 connection + 1 thread  |  |   (default: --workers)         |  |
+|  |  each, round-robin               |  |  json -> Diameter encode       |  |
+|  +----------------------------------+  +--------------------------------+  |
+|         ^ inbound requests,                    | outbound requests:        |
+|         | from either leg                      v client leg, else server   |
+|  +----------------------------------+  +--------------------------------+  |
+|  | Diameter CLIENT leg (dials)      |  | Diameter SERVER leg (listens)  |  |
+|  |  --diameter-peer-host            |  |  --diameter-port (3868)        |  |
+|  |  --diameter-peer-port (3868)     |  |  --diameter-server-local-host  |  |
+|  |  --diameter-connections N (1)    |  |  any number of peers and       |  |
+|  |  --diameter-io-threads T         |  |  connections                   |  |
+|  |   (default: N, up to --workers)  |  |  threads: --workers (gateway   |  |
+|  |  round-robin, reconnecting       |  |   io_context)                  |  |
+|  +----------------------------------+  +--------------------------------+  |
+|  admin API :8079 (--admin-port)        Prometheus :8085 (--prometheus-port)|
++----------------------------------------------------------------------------+
+         | N connections (TCP; 1 association over SCTP) ^ peers connect
+         v                                              |
+  +-----------------------------+              +-----------------------------+
+  | Diameter peer (SUT)         |              | Diameter peers (SUT)        |
+  +-----------------------------+              +-----------------------------+
 ```
+
+A gateway has one or both Diameter legs: the **client leg** when
+`--diameter-peer-host` is given (it dials the peer, e.g. an AF towards a PCRF)
+and the **server leg** when `--diameter-port` is not 0 (peers dial it, e.g. a
+PCRF that AFs connect to). Requests received on either leg go to h2agent
+(inbound); requests posted by h2agent go out on the client leg, or on the server
+leg when there is no client leg (see
+[outbound requests on the server leg](#outbound-requests-on-the-server-leg)).
+
+### Threads
+
+Each box above has its own threads, so one kind of traffic does not queue behind
+another:
+
+```
++---------------------------+------------------------+-----------------------------------+
+| threads                   | option (default)       | what runs there                   |
++---------------------------+------------------------+-----------------------------------+
+| gateway io_context        | --workers (nproc)      | server leg connections, their     |
+|                           |                        | timers and answers; gauges        |
+| client leg io_contexts    | --diameter-io-threads  | 1 io_context per thread; client   |
+|                           | (N, up to --workers)   | connection i on thread i % T,     |
+|                           |                        | with its timers and answers       |
+| h2agent links             | --h2agent-connections  | 1 thread + 1 HTTP/2 connection    |
+|                           | (4)                    | each, inbound requests            |
+| outbound HTTP/2 server    | --http2-server-threads | director connections spread over  |
+|                           | (--workers)            | them; json parse, Diameter encode |
+| admin API                 | 1                      | /admin/v1                         |
+| Prometheus                | civetweb pool          | scrapes                           |
++---------------------------+------------------------+-----------------------------------+
+```
+
+Why separate io_contexts: one io_context run by many threads has a single
+reactor and a single scheduler mutex. Under Diameter load every connection then
+queues on that mutex (two reads per message, writes, request timers): the
+gateway stalls at a few cores whatever the machine size, the sockets are read
+late and the latency grows. With an io_context per thread the client
+connections do not share anything but the process.
+
+### Where each message runs
+
+```
+inbound request on the client leg (e.g. a RAR to an AF)
+  client conn thread : read, decode, Diameter -> JSON  --post-->
+  h2agent link thread: HTTP/2 POST to h2agent, response  --post-->
+  client conn thread : JSON -> Diameter answer, write (same connection)
+
+inbound request on the server leg (e.g. an AAR to a PCRF)
+  gateway io_context : read, decode, Diameter -> JSON  --post-->
+  h2agent link thread: HTTP/2 POST to h2agent, response  --post-->
+  gateway io_context : JSON -> Diameter answer, write (same connection)
+
+outbound request (e.g. an AAR from an AF, a RAR from a PCRF)
+  HTTP/2 server thread: JSON -> Diameter, send on a connection  --write-->
+  connection thread   : read the answer, correlate, Diameter -> JSON  --post-->
+  HTTP/2 server thread: HTTP/2 response to h2agent
+```
+
+### Connectivity parameters
+
+```
++--------------------------------+---------+-------------------------------------------+
+| option                         | default | meaning                                   |
++--------------------------------+---------+-------------------------------------------+
+| Diameter client leg                                                                  |
+| --diameter-peer-host           | (none)  | peer to dial; none = no client leg. Over  |
+|                                |         | SCTP, a list = several peer paths         |
+| --diameter-peer-port           | 3868    |                                           |
+| --diameter-connections         | 1       | connections to the peer, round-robin, the |
+|                                |         | answer correlated on any of them. TCP     |
+|                                |         | only above 1                              |
+| --diameter-io-threads          | N, up   | threads of those connections, one         |
+|                                | to      | io_context each                           |
+|                                | workers |                                           |
+| --diameter-client-transport    | tcp     | tcp or sctp                               |
+| --diameter-client-local-host   | auto    | local source address (SCTP: single- or    |
+|                                |         | multihoming)                              |
+| Diameter server leg                                                                  |
+| --diameter-port                | 3868    | listener; 0 = no server leg               |
+| --diameter-server-local-host   | 0.0.0.0 | listener address(es)                      |
+| --diameter-server-transport    | tcp     | tcp or sctp                               |
+| Both legs                                                                            |
+| --diameter-timeout-ms          | 5000    | transaction timeout, outbound (504 to     |
+|                                |         | h2agent) and inbound (5012 to the peer)   |
+| --watchdog-interval            | 30      | DWR period of every client connection (s) |
+| --workers                      | nproc   | gateway io_context threads (server leg)   |
+| HTTP/2 towards h2agent (inbound)                                                     |
+| --h2agent-host                 | local-  | h2agent traffic server; prefer 127.0.0.1  |
+|                                | host    | (localhost may resolve to ::1 first)      |
+| --h2agent-port                 | 8000    |                                           |
+| --h2agent-connections          | 4       | links, 1 thread each, round-robin         |
+| HTTP/2 from h2agent (outbound)                                                       |
+| --http2-server-port            | 8005    | where h2agent posts the outbound requests |
+| --http2-server-threads         | workers | threads of that server                    |
+| Management                                                                           |
+| --admin-port                   | 8079    | /admin/v1 (0 disables it)                 |
+| --prometheus-port              | 8085    | metrics                                   |
++--------------------------------+---------+-------------------------------------------+
+```
+
+TLS (TCP) and SCTP multihoming add their own options: see
+[Secure Diameter](#secure-diameter-tlstcp) and [SCTP multihoming](#sctp-multihoming).
+Every client connection and every h2agent link reconnects on its own with an
+exponential backoff (1 s up to 10 s).
+
+### Sizing
+
+- **One connection serializes.** Every message of a connection is read, decoded
+  and written in order on one thread. Under load give the client leg several
+  connections (`--diameter-connections`), and the peer as many: on the server
+  leg the peers decide how many they open. The peer must accept N connections
+  per Origin-Host.
+- **Spread the connections over threads.** The default (one thread per
+  connection, up to `--workers`) is the right one unless the gateway shares the
+  CPUs with other processes; `--diameter-io-threads` below N groups several
+  connections per thread.
+- **The HTTP/2 sides scale apart.** Inbound requests ride the h2agent links
+  (`--h2agent-connections`, one h2agent I/O thread each on the other side);
+  outbound requests ride the director connections to the HTTP/2 server
+  (`--http2-server-threads`).
+- **Look at the threads, not only at the CPU.** A gateway far from its cores but
+  with a growing latency is queuing somewhere: a single connection, a single
+  link, or too few threads for its connections.
 
 ## How it works
 
@@ -689,6 +828,10 @@ Diameter:
                                   (SCTP uses a single association; multi-streaming not
                                   implemented). The peer must accept N connections per
                                   origin-host.
+  --diameter-io-threads <n>       Threads of those connections, each with its own
+                                  io_context; the connections are spread over them
+                                  round-robin (default: one per connection, up to
+                                  --workers).
 
   --diameter-client-local-host <ip>  Local source address to bind the outbound Diameter
                                   client to. For SCTP this single-homes the association so
@@ -1046,6 +1189,16 @@ Why use it (it is opt-in, not a throughput booster by default):
   independently). The gateway prefers a ready connection when sending.
 - **Headroom** for a much faster SUT, where a single socket / correlation mutex
   could serialise before the network does.
+
+Threads (`--diameter-io-threads`): the pooled connections do not share the
+gateway io_context. They run on their own io_contexts, one thread each, one per
+connection up to `--workers` by default (spread round-robin when there are fewer
+threads). A connection, its request timers and the answers to the requests it
+receives (e.g. the RAA of a RAR) all run on its thread. Why: one io_context run
+by many threads has a single reactor and a single scheduler mutex, so under load
+every connection queues on that mutex and the gateway stalls at a few cores
+whatever the machine size. The server leg (accepted connections) still runs on
+the gateway io_context (`--workers`).
 
 Scope and prerequisites:
 

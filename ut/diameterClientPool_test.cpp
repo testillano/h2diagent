@@ -7,7 +7,8 @@ These exercise the pool against a real local diametercomm::DiameterServer on
 key properties verified:
   - a pool of 1 behaves like a single connection (default, zero-risk);
   - a pool of N connects all N and stripes pick()/pickReady() round-robin;
-  - anyReady()/size()/disconnectAll() behave as expected.
+  - anyReady()/size()/disconnectAll() behave as expected;
+  - over several io_contexts, client i runs on context i % n (its answers too).
 */
 
 #include <gtest/gtest.h>
@@ -16,7 +17,11 @@ key properties verified:
 #include <chrono>
 #include <ert/diametercomm/DiameterServer.hpp>
 #include <ert/h2diagent/DiameterClientPool.hpp>
+#include <ert/h2diagent/IoContextPool.hpp>
+#include <mutex>
 #include <set>
+#include <stdexcept>
+#include <thread>
 
 using ert::diametercomm::DiameterServer;
 using ert::diametercomm::Peer;
@@ -330,4 +335,122 @@ TEST_F(DiameterClientPool_test, ServerLegAnswerResolvedByPoolTryResolve) {
     runFor(std::chrono::milliseconds(200));
     gwServer.close();
     sut.close();
+}
+
+// =============================================================================
+// Clients spread over several io_contexts (--diameter-io-threads)
+// =============================================================================
+namespace {
+// Poll 'cond' until true or the deadline: true when it became true.
+template <class Cond>
+bool waitFor(Cond cond, std::chrono::milliseconds timeout = std::chrono::milliseconds(3000)) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (cond()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return cond();
+}
+}  // namespace
+
+TEST_F(DiameterClientPool_test, ClientsSpreadRoundRobinOverContexts) {
+    boost::asio::io_context a, b;
+    DiameterClientPool pool({&a, &b}, clientConfig(), Transport::TCP, 5);
+    ASSERT_EQ(pool.size(), 5u);
+    for (std::size_t i = 0; i < pool.size(); ++i) {
+        EXPECT_EQ(pool.contextOf(&pool.client(i)), i % 2 == 0 ? &a : &b) << "client " << i;
+    }
+}
+
+TEST_F(DiameterClientPool_test, MoreContextsThanConnectionsLeavesSomeUnused) {
+    boost::asio::io_context a, b, c;
+    DiameterClientPool pool({&a, &b, &c}, clientConfig(), Transport::TCP, 2);
+    EXPECT_EQ(pool.contextOf(&pool.client(0)), &a);
+    EXPECT_EQ(pool.contextOf(&pool.client(1)), &b);
+}
+
+TEST_F(DiameterClientPool_test, SingleContextConstructorKeepsEveryClientOnIt) {
+    DiameterClientPool pool(io_, clientConfig(), Transport::TCP, 3);
+    for (std::size_t i = 0; i < pool.size(); ++i) EXPECT_EQ(pool.contextOf(&pool.client(i)), &io_);
+}
+
+TEST_F(DiameterClientPool_test, ContextOfForeignClientIsNull) {
+    DiameterClientPool pool(io_, clientConfig(), Transport::TCP, 2);
+    ert::diametercomm::DiameterClient foreign(io_, clientConfig(), Transport::TCP);
+    EXPECT_EQ(pool.contextOf(&foreign), nullptr);
+    EXPECT_EQ(pool.contextOf(nullptr), nullptr);
+}
+
+TEST_F(DiameterClientPool_test, InvalidContextListThrows) {
+    EXPECT_THROW(DiameterClientPool({}, clientConfig(), Transport::TCP, 1), std::invalid_argument);
+    boost::asio::io_context a;
+    EXPECT_THROW(DiameterClientPool({&a, nullptr}, clientConfig(), Transport::TCP, 2), std::invalid_argument);
+}
+
+TEST_F(DiameterClientPool_test, ZeroConnectionsOnContextsClampedToOne) {
+    boost::asio::io_context a, b;
+    DiameterClientPool pool({&a, &b}, clientConfig(), Transport::TCP, 0);
+    ASSERT_EQ(pool.size(), 1u);
+    EXPECT_EQ(pool.contextOf(&pool.client(0)), &a);
+}
+
+// End to end over real threads: each pooled client connects, sends and gets its
+// answer on the thread of ITS io_context (not the caller, not another client's).
+TEST_F(DiameterClientPool_test, AnswersRunOnTheThreadOfTheirClientContext) {
+    ert::h2diagent::IoContextPool serverIo(1);
+    DiameterServer server(serverIo.at(0), serverConfig());
+    server.setRequestCallback([](std::shared_ptr<Peer> p, Peer::Buffer&& msg) { p->send(answerFor(msg)); });
+    server.listen("127.0.0.1", 15910);
+
+    ert::h2diagent::IoContextPool clientIo(2);
+    DiameterClientPool pool(clientIo.contexts(), clientConfig(), Transport::TCP, 2);
+    pool.setReconnectEnabled(false);
+    pool.connectAll("127.0.0.1", 15910);
+    serverIo.start();
+    clientIo.start();
+
+    ASSERT_TRUE(waitFor([&]() { return pool.client(0).isReady() && pool.client(1).isReady(); }));
+    ASSERT_TRUE(waitFor([&]() { return server.activePeerCount() == 2u; }));
+
+    // thread of each client context
+    std::thread::id contextThread[2];
+    std::atomic<int> probed{0};
+    for (int i = 0; i < 2; ++i) {
+        boost::asio::post(clientIo.at(i), [&, i]() {
+            contextThread[i] = std::this_thread::get_id();
+            probed++;
+        });
+    }
+    ASSERT_TRUE(waitFor([&]() { return probed.load() == 2; }));
+    EXPECT_NE(contextThread[0], contextThread[1]);
+
+    std::mutex m;
+    std::thread::id answerThread[2];
+    std::atomic<int> answers{0};
+    std::atomic<int> timeouts{0};
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_NE(pool.client(i).send(
+                      appRequest(),
+                      [&, i](const Peer::Buffer&) {
+                          std::lock_guard<std::mutex> lock(m);
+                          answerThread[i] = std::this_thread::get_id();
+                          answers++;
+                      },
+                      2000, {}, [&](uint32_t) { timeouts++; }),
+                  0u);
+    }
+    ASSERT_TRUE(waitFor([&]() { return answers.load() == 2; }));
+    EXPECT_EQ(timeouts.load(), 0);
+    {
+        std::lock_guard<std::mutex> lock(m);
+        EXPECT_EQ(answerThread[0], contextThread[0]);
+        EXPECT_EQ(answerThread[1], contextThread[1]);
+        EXPECT_NE(answerThread[0], std::this_thread::get_id());
+    }
+
+    // Teardown: join every thread before the objects using the contexts go.
+    pool.disconnectAll(0);
+    clientIo.stop();
+    serverIo.stop();
+    server.close();
 }

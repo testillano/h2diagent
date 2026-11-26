@@ -29,6 +29,7 @@ Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercomm/DiameterClient.hpp>
 #include <ert/diametercomm/DiameterServer.hpp>
 #include <ert/h2diagent/DiameterClientPool.hpp>
+#include <ert/h2diagent/IoContextPool.hpp>
 #include <ert/metrics/Metrics.hpp>
 #include <functional>
 #include <map>
@@ -124,6 +125,12 @@ struct GatewayConfig {
     // them). 0 = workers. A single thread serializes every outbound request (json
     // parse, Diameter encode, answer write) and caps the gateway at one core.
     int http2ServerThreads{0};
+
+    // Threads serving the Diameter client connections, each running its own
+    // io_context (IoContextPool); the connections are spread over them
+    // round-robin. 0 = one per connection up to the workers. A single io_context
+    // shared by every connection serializes them on its scheduler mutex.
+    int diameterIoThreads{0};
 
     // General
     uint16_t adminPort{8079};  // admin interface (/admin/v1); 0 disables it
@@ -295,6 +302,9 @@ class Gateway {
 
     // Components
     std::unique_ptr<diametercomm::DiameterServer> diameterServer_;
+    // Threads of the client connections. Declared BEFORE the client pool: the
+    // clients (sockets, timers on these contexts) are destroyed first.
+    std::unique_ptr<IoContextPool> diameterIo_;
     std::unique_ptr<DiameterClientPool> diameterClientPool_;  // N outbound connections (N>=1)
     std::atomic<std::size_t> serverLegCursor_{0};             // round-robin of server-leg outbound requests
 

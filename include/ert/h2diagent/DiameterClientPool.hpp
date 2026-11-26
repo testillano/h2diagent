@@ -23,6 +23,8 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
  * Threading: pick() is safe to call concurrently (round-robin cursor is a
  * relaxed atomic). Configuration setters and connectAll()/disconnectAll() are
  * meant to be called during setup/teardown, not concurrently with traffic.
+ * The clients may run on several io_contexts (one thread each, see
+ * IoContextPool): every client callback then runs on its own client's thread.
  */
 
 #pragma once
@@ -34,6 +36,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/h2diagent/helpers.hpp>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -57,11 +60,27 @@ class DiameterClientPool {
      */
     DiameterClientPool(boost::asio::io_context& io, const diametercomm::Peer::Config& config,
                        diametercomm::Transport transport, std::size_t connections)
-        : io_(io) {
+        : DiameterClientPool(std::vector<boost::asio::io_context*>{&io}, config, transport, connections) {}
+
+    /**
+     * Same, with the clients spread round-robin over several io_contexts
+     * (client i runs on contexts[i % contexts.size()], e.g. an IoContextPool):
+     * the connections no longer share one reactor and scheduler. An empty
+     * list or a null entry is a programming error (std::invalid_argument).
+     */
+    DiameterClientPool(const std::vector<boost::asio::io_context*>& contexts, const diametercomm::Peer::Config& config,
+                       diametercomm::Transport transport, std::size_t connections) {
+        if (contexts.empty()) throw std::invalid_argument("DiameterClientPool: no io_context");
+        for (auto* io : contexts) {
+            if (!io) throw std::invalid_argument("DiameterClientPool: null io_context");
+        }
         if (connections < 1) connections = 1;
         clients_.reserve(connections);
+        contexts_.reserve(connections);
         for (std::size_t i = 0; i < connections; ++i) {
-            clients_.push_back(std::make_unique<diametercomm::DiameterClient>(io_, config, transport));
+            boost::asio::io_context* io = contexts[i % contexts.size()];
+            clients_.push_back(std::make_unique<diametercomm::DiameterClient>(*io, config, transport));
+            contexts_.push_back(io);
         }
     }
 
@@ -76,6 +95,18 @@ class DiameterClientPool {
     const diametercomm::DiameterClient& client(std::size_t index) const { return *clients_.at(index); }
     /** Connection at a pool position, for fault injection (admin). */
     diametercomm::DiameterClient& client(std::size_t index) { return *clients_.at(index); }
+
+    /**
+     * io_context a pooled client runs on (its socket, timers and callbacks), so
+     * the work that follows one of its messages can stay on that thread. nullptr
+     * for a client not of this pool.
+     */
+    boost::asio::io_context* contextOf(const diametercomm::DiameterClient* client) const {
+        for (std::size_t i = 0; i < clients_.size(); ++i) {
+            if (clients_[i].get() == client) return contexts_[i];
+        }
+        return nullptr;
+    }
 
     /** Enable metrics on every pooled connection (same source label). */
     void enableMetrics(ert::metrics::Metrics* metrics, const std::string& source) {
@@ -195,8 +226,8 @@ class DiameterClientPool {
     }
 
    private:
-    boost::asio::io_context& io_;
     std::vector<std::unique_ptr<diametercomm::DiameterClient>> clients_;
+    std::vector<boost::asio::io_context*> contexts_;  // io_context of clients_[i]
     std::atomic<std::size_t> cursor_{0};
     PoolRequestCallback requestCb_;
     diametercomm::DiameterClient::UnmatchedAnswerCallback unmatchedCb_;

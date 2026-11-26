@@ -100,6 +100,10 @@ spec:
             - {{ .Values.diameter.peerPort | quote }}
             - "--diameter-connections"
             - {{ .Values.diameter.connections | quote }}
+            {{- if gt (int (.Values.diameter.ioThreads | default 0)) 0 }}
+            - "--diameter-io-threads"
+            - {{ .Values.diameter.ioThreads | quote }}
+            {{- end }}
             {{- end }}
             - "--origin-host"
             - {{ .Values.originHost | quote }}
