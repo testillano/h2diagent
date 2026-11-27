@@ -16,6 +16,7 @@ Licensed under the MIT License. Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercodec/codec/Message.hpp>
 #include <ert/h2diagent/Admin.hpp>
 #include <ert/h2diagent/CapabilitiesAvps.hpp>
+#include <ert/h2diagent/CommandNames.hpp>
 #include <ert/h2diagent/DecodeAs.hpp>
 #include <ert/h2diagent/Gateway.hpp>
 #include <ert/tracing/Logger.hpp>
@@ -176,6 +177,12 @@ void Gateway::start() {
             // to itself, so it cannot be moved after load)
             dictionaries_[appId].load(dictJson);
             loadedDictionaries_.emplace_back(dictPath, appId);
+            for (const auto& conflict : helpers::collectCommandNames(dictJson, commandNames_)) {
+                LOGWARNING(
+                    ert::tracing::Logger::warning(ert::tracing::Logger::asString("Command name conflict in %s: %s",
+                                                                                 dictPath.c_str(), conflict.c_str()),
+                                                  ERT_FILE_LOCATION));
+            }
 
             LOGWARNING(ert::tracing::Logger::warning(
                 ert::tracing::Logger::asString("Dictionary loaded: %s (application-id: %u)", dictPath.c_str(), appId),
@@ -242,6 +249,7 @@ void Gateway::start() {
                 "Diameter client connection state per pooled connection (0 closed, 1 open, 2 reconnecting, "
                 "3 capabilities exchange, 4 closing)",
                 familyLabels));
+            publishCommandNames();
         }
     }
 
@@ -636,6 +644,20 @@ void Gateway::refreshConnectionGauges() {
         }
     }
     pathStates_ = std::move(seen);
+}
+
+void Gateway::publishCommandNames() {
+    if (!metrics_ || commandNames_.empty()) return;
+    auto& family = metrics_->addGaugeFamily(
+        "h2diagent_diameter_command_info",
+        "Request and answer names of each command code of the loaded dictionaries (always 1)", {});
+    for (const auto& [code, names] : commandNames_) {
+        ert::metrics::labels_t labels = {{"source", config_.productName}, {"command_code", std::to_string(code)}};
+        // a side missing in the dictionaries gets no label (an empty value is no label for Prometheus)
+        if (!names.request.empty()) labels["request_name"] = names.request;
+        if (!names.answer.empty()) labels["answer_name"] = names.answer;
+        family.Add(labels).Set(1);
+    }
 }
 
 void Gateway::scheduleConnectionGauges() {

@@ -408,8 +408,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_server_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -508,8 +508,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
-          "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+          "expr": "(sum(rate(diameter_server_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{answer_name}} rc={{result_code}}",
           "range": true,
           "refId": "A"
         }
@@ -621,8 +621,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -721,8 +721,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
-          "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+          "expr": "(sum(rate(diameter_client_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{answer_name}} rc={{result_code}}",
           "range": true,
           "refId": "A"
         }
@@ -821,8 +821,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_requests_timedout_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} timeouts cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_requests_timedout_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_requests_timedout_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} timeouts cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -1036,8 +1036,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_requests_unsent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} unsent cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_requests_unsent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_requests_unsent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} unsent cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -1241,8 +1241,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)",
-          "legendFormat": "{{source}} client leg cmd={{command_code}} app={{application_id}}",
+          "expr": "(sum(rate(diameter_client_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id))",
+          "legendFormat": "{{source}} client leg cmd={{command_code}} {{answer_name}} app={{application_id}}",
           "range": true,
           "refId": "A"
         },
@@ -1252,8 +1252,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)",
-          "legendFormat": "{{source}} server leg cmd={{command_code}} app={{application_id}}",
+          "expr": "(sum(rate(diameter_server_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_answers_uncorrelated_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id))",
+          "legendFormat": "{{source}} server leg cmd={{command_code}} {{answer_name}} app={{application_id}}",
           "range": true,
           "refId": "B"
         }
@@ -1354,8 +1354,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path)",
-          "legendFormat": "{{source}} client cmd={{command_code}} by={{by}} {{path}}",
+          "expr": "(sum(rate(diameter_client_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path))",
+          "legendFormat": "{{source}} client cmd={{command_code}} {{answer_name}} by={{by}} {{path}}",
           "range": true,
           "refId": "A"
         },
@@ -1365,8 +1365,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path)",
-          "legendFormat": "{{source}} server cmd={{command_code}} by={{by}} {{path}}",
+          "expr": "(sum(rate(diameter_server_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_answers_recovered_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, by, path))",
+          "legendFormat": "{{source}} server cmd={{command_code}} {{answer_name}} by={{by}} {{path}}",
           "range": true,
           "refId": "B"
         }
@@ -1568,8 +1568,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} server leg cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_server_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} server leg cmd={{command_code}} {{answer_name}}",
           "range": true,
           "refId": "A"
         },
@@ -1579,8 +1579,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} client leg cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_answers_sent_counter{source=~\"$source\",result_code=\"5012\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} client leg cmd={{command_code}} {{answer_name}}",
           "range": true,
           "refId": "B"
         }
@@ -2016,8 +2016,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_response_delay_seconds_sum{source=~\"$source\"}[$rate_interval])) by (application_id, command_code) / sum(rate(diameter_client_response_delay_seconds_count{source=~\"$source\"}[$rate_interval])) by (application_id, command_code)",
-          "legendFormat": "avg app={{application_id}} cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_response_delay_seconds_sum{source=~\"$source\"}[$rate_interval])) by (application_id, command_code) / sum(rate(diameter_client_response_delay_seconds_count{source=~\"$source\"}[$rate_interval])) by (application_id, command_code)) * on(command_code) group_left(request_name) group by (command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(command_code) (sum(rate(diameter_client_response_delay_seconds_sum{source=~\"$source\"}[$rate_interval])) by (application_id, command_code) / sum(rate(diameter_client_response_delay_seconds_count{source=~\"$source\"}[$rate_interval])) by (application_id, command_code))",
+          "legendFormat": "avg app={{application_id}} cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -2117,8 +2117,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(diameter_client_response_delay_seconds_bucket{source=~\"$source\"}[$rate_interval])) by (le, application_id, command_code))",
-          "legendFormat": "p95 app={{application_id}} cmd={{command_code}}",
+          "expr": "(histogram_quantile(0.95, sum(rate(diameter_client_response_delay_seconds_bucket{source=~\"$source\"}[$rate_interval])) by (le, application_id, command_code))) * on(command_code) group_left(request_name) group by (command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(command_code) (histogram_quantile(0.95, sum(rate(diameter_client_response_delay_seconds_bucket{source=~\"$source\"}[$rate_interval])) by (le, application_id, command_code)))",
+          "legendFormat": "p95 app={{application_id}} cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -2230,8 +2230,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)",
-          "legendFormat": "{{source}} cmd={{command_code}}",
+          "expr": "(sum(rate(diameter_client_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_requests_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{request_name}}",
           "range": true,
           "refId": "A"
         }
@@ -2330,8 +2330,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_client_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
-          "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+          "expr": "(sum(rate(diameter_client_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_client_answers_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{answer_name}} rc={{result_code}}",
           "range": true,
           "refId": "A"
         }
@@ -2430,8 +2430,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)",
-          "legendFormat": "{{source}} cmd={{command_code}} app={{application_id}}",
+          "expr": "(sum(rate(diameter_server_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id)) * on(source, command_code) group_left(request_name) group by (source, command_code, request_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_requests_sent_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, application_id))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{request_name}} app={{application_id}}",
           "range": true,
           "refId": "A"
         }
@@ -2530,8 +2530,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(diameter_server_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)",
-          "legendFormat": "{{source}} cmd={{command_code}} rc={{result_code}}",
+          "expr": "(sum(rate(diameter_server_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code)) * on(source, command_code) group_left(answer_name) group by (source, command_code, answer_name) (h2diagent_diameter_command_info{source=~\"$source\"}) or on(source, command_code) (sum(rate(diameter_server_answers_received_counter{source=~\"$source\"}[$rate_interval]) > 0) by (source, command_code, result_code))",
+          "legendFormat": "{{source}} cmd={{command_code}} {{answer_name}} rc={{result_code}}",
           "range": true,
           "refId": "A"
         }

@@ -28,6 +28,7 @@ Copyright (c) 2024 Eduardo Ramos
 #include <ert/diametercodec/stack/Dictionary.hpp>
 #include <ert/diametercomm/DiameterClient.hpp>
 #include <ert/diametercomm/DiameterServer.hpp>
+#include <ert/h2diagent/CommandNames.hpp>
 #include <ert/h2diagent/DiameterClientPool.hpp>
 #include <ert/h2diagent/IoContextPool.hpp>
 #include <ert/metrics/Metrics.hpp>
@@ -276,6 +277,8 @@ class Gateway {
     // Refresh the client connection state gauges (every second, on io_).
     void refreshConnectionGauges();
     void scheduleConnectionGauges();
+    // Info gauge with the command names of the dictionaries (once, at start).
+    void publishCommandNames();
     // SCTP path states last seen (gauges, Warning log on every change): "<leg>/<index>/<address>" -> state
     std::map<std::string, std::string> pathStates_;
 
@@ -311,6 +314,7 @@ class Gateway {
     // Multi-stack dictionaries indexed by Application-Id
     std::map<uint32_t, diametercodec::stack::Dictionary> dictionaries_;
     std::vector<std::pair<std::string, uint32_t>> loadedDictionaries_;  // file and application id (admin)
+    std::map<uint32_t, helpers::CommandNames> commandNames_;            // command code -> AAR / AAA (metrics)
     // --decode-as resolved against the dictionaries at start (empty: plain hex)
     diametercodec::codec::DecodeOptions decodeOptions_;
     diametercodec::stack::Dictionary defaultDictionary_;  // fallback for unknown appId

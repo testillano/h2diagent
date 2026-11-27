@@ -5,6 +5,7 @@ add_executable(unit-test
     decodeAs_test.cpp
     admin_test.cpp
     capabilitiesAvps_test.cpp
+    commandNames_test.cpp
     gateway_test.cpp
     # the Gateway itself, exercised end to end over loopback sockets (gateway_test)
     ${CMAKE_SOURCE_DIR}/src/Gateway.cpp

@@ -1394,6 +1394,29 @@ h2diagent_diameter_client_connection_state [source] [connection] [peer]
 `diameter_client_peer_state_gauge`, one series shared by all the pooled
 connections). The server leg count is `diameter_server_active_peers_gauge`.
 
+The Diameter metrics only carry the numeric `command_code`. The gateway also
+publishes, once at start, an info series per command code of the loaded
+dictionaries (value always 1) with its request and answer abbreviations:
+
+```
+h2diagent_diameter_command_info [source] [command_code] [request_name] [answer_name]
+   e.g. {source="h2diagent", command_code="265", request_name="AAR", answer_name="AAA"} 1
+```
+
+The abbreviation comes from the dictionary command name: `<prefix>-Request` /
+`<prefix>-Answer` give the prefix initials plus `R` / `A`, an upper case word
+being taken whole (`AA-Request` -> `AAR`, `Re-Auth-Answer` -> `RAA`); any other
+name is kept as is (`CER`). A command code in several dictionaries keeps the
+first loaded name (a different one is logged as a conflict); a side missing in
+the dictionaries has no label. Join it to show the name next to the code, as the
+Grafana dashboard does (the `or` keeps the codes missing in the dictionaries):
+
+```
+(Q) * on(source, command_code) group_left(request_name)
+      group by (source, command_code, request_name) (h2diagent_diameter_command_info)
+  or on(source, command_code) (Q)
+```
+
 ### Quick Prometheus setup
 
 Use h2agent's [`prometheus-only.sh`](https://github.com/testillano/h2agent/blob/master/tools/grafana/prometheus-only.sh) script to quickly spin up a Prometheus instance that scrapes both:

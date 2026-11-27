@@ -15,6 +15,7 @@ Inbound translation (and the 5012 answers), outbound translation (200, 502,
 #include <unistd.h>
 
 #include <atomic>
+#include <boost/asio/ip/tcp.hpp>
 #include <chrono>
 #include <condition_variable>
 #include <ert/diametercodec/codec/Message.hpp>
@@ -29,6 +30,7 @@ Inbound translation (and the 5012 answers), outbound translation (200, 502,
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -155,6 +157,30 @@ int openConnections(const std::string& leg) {
     for (const auto& c : peers["connections"])
         if (c.value("leg", "") == leg && c.value("state", "") == "open") ++n;
     return n;
+}
+
+// Prometheus text exposition of the gateway (HTTP/1.0 GET /metrics), "" on failure.
+std::string scrapeMetrics(uint16_t port) {
+    boost::asio::ip::tcp::iostream stream("127.0.0.1", std::to_string(port));
+    if (!stream) return "";
+    stream.expires_after(std::chrono::seconds(3));
+    stream << "GET /metrics HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n" << std::flush;
+    std::ostringstream out;
+    out << stream.rdbuf();
+    return out.str();
+}
+
+// The exposition line of a metric whose labels include all 'labels' ("" if none).
+std::string metricLine(const std::string& exposition, const std::string& name, const std::vector<std::string>& labels) {
+    std::istringstream lines(exposition);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (line.rfind(name + "{", 0) != 0) continue;
+        bool all = true;
+        for (const auto& label : labels) all = all && line.find(label) != std::string::npos;
+        if (all) return line;
+    }
+    return "";
 }
 
 }  // namespace
@@ -428,6 +454,22 @@ TEST_F(Gateway_test, FaultInjection) {
     // the test client reconnects to keep the environment as found
     env->sutClient->connect("127.0.0.1", GatewayDiameterPort);
     EXPECT_TRUE(waitFor([]() { return openConnections("server") == 1; }));
+}
+
+// The command names of the dictionary, for the dashboards: one info series per
+// command code, value 1 (the test dictionary only has CC-Request / CC-Answer).
+TEST_F(Gateway_test, CommandNamesInfoMetric) {
+    const std::string exposition = scrapeMetrics(GatewayMetricsPort);
+    ASSERT_NE(exposition.find("HTTP/1."), std::string::npos) << "no answer from the metrics port";
+
+    const std::string line =
+        metricLine(exposition, "h2diagent_diameter_command_info",
+                   {"source=\"h2diagent-ut\"", "command_code=\"272\"", "request_name=\"CCR\"", "answer_name=\"CCA\""});
+    ASSERT_FALSE(line.empty()) << exposition;
+    EXPECT_EQ(line.substr(line.rfind(' ') + 1), "1");
+
+    // only the commands of the loaded dictionaries
+    EXPECT_TRUE(metricLine(exposition, "h2diagent_diameter_command_info", {"command_code=\"265\""}).empty());
 }
 
 // =============================================================================
